@@ -44,6 +44,7 @@ class CurriculumSMTTrainer(SMT_Trainer):
         super().__init__(*args, **kwargs)
         self.current_stage: int = 2
         self._stage_calculator: Callable[[int], int] = lambda step: self.current_stage
+        self._val_sample: dict | None = None   # stores first val batch for image logging
 
     # ── lr schedule: warmup + constant ───────────────────────────────────────
 
@@ -127,6 +128,11 @@ class CurriculumSMTTrainer(SMT_Trainer):
         loss = self.compute_loss(batch)
         self.log("val/loss", loss, on_epoch=True, batch_size=x.shape[0], prog_bar=True)
 
+        # Store first batch image for prediction table logging
+        if batch_idx == 0:
+            self._val_sample = {"x": x[0].squeeze().cpu().numpy(),
+                                "path": path_to_images[0]}
+
         # Cap greedy-decode steps proportionally to the current curriculum stage.
         # model.maxlen is sized for the worst case (5 stacked systems + 10 % buffer).
         # At stage 2 the GT is only ~2/5 of that length, so decoding to the full
@@ -185,6 +191,22 @@ class CurriculumSMTTrainer(SMT_Trainer):
     def on_validation_epoch_end(self):
         # Chord metrics must be computed before super() clears self.preds / self.grtrs
         self._log_chord_metrics(self.preds, self.grtrs, step="val")
+
+        # Log image + prediction + GT table for the first val sample
+        if self._val_sample is not None and self.preds:
+            stage = int(self._stage_calculator(self.current_epoch))
+            table = wandb.Table(columns=["Image", "Path", "Stage", "Prediction", "Ground Truth"])
+            table.add_data(
+                wandb.Image(self._val_sample["x"],
+                            caption=f"epoch={self.current_epoch}  stage={stage}"),
+                self._val_sample["path"],
+                stage,
+                self.preds[0],
+                self.grtrs[0],
+            )
+            self.logger.experiment.log({"val/prediction_sample": table})
+            self._val_sample = None
+
         super().on_validation_epoch_end()
 
     def on_test_epoch_end(self):

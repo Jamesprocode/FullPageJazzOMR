@@ -294,18 +294,30 @@ class PageCropDataset(Dataset):
 
     # ── dataset interface ────────────────────────────────────────────────────
 
+    def _stage_eligible(self):
+        """Return eligible sample indices for the current curriculum stage."""
+        stage = self.get_stage(self.epoch)
+        max_n = max(self._eligible_for.keys())
+        clamped = min(stage, max_n)
+        return self._eligible_for.get(clamped, self._eligible_for[max_n])
+
     def __len__(self) -> int:
-        return self.dataset_length
+        # Train: virtual fixed size so Lightning sees a constant epoch length.
+        # Val/test: one N-system crop per page at the current stage.
+        if self.split == "train":
+            return self.dataset_length
+        return len(self._stage_eligible())
 
     def __getitem__(self, index):
         assert self.w2i is not None, "Call set_dictionaries() before iterating."
 
-        # Select eligible sample for current curriculum stage
-        stage = self.get_stage(self.epoch)
-        max_n = max(self._eligible_for.keys())
-        clamped = min(stage, max_n)
-        eligible = self._eligible_for.get(clamped, self._eligible_for[max_n])
-        idx = random.choice(eligible)
+        eligible = self._stage_eligible()
+        if self.split == "train":
+            # Curriculum-based random sampling, ignoring the DataLoader index.
+            idx = random.choice(eligible)
+        else:
+            # Val/test: deterministic iteration through stage-eligible samples.
+            idx = eligible[index % len(eligible)]
 
         img_path, gt_path, n = self.samples[idx]
         tokens = self.gt_tokens[idx]
