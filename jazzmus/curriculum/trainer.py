@@ -11,6 +11,8 @@ the original jazzmus.smt_trainer.SMT_Trainer unchanged.
 
 from typing import Callable
 
+import torch
+import transformers
 import wandb
 from jazzmus.smt_trainer import SMT_Trainer
 
@@ -42,6 +44,32 @@ class CurriculumSMTTrainer(SMT_Trainer):
         super().__init__(*args, **kwargs)
         self.current_stage: int = 2
         self._stage_calculator: Callable[[int], int] = lambda step: self.current_stage
+
+    # ── lr schedule: warmup + constant ───────────────────────────────────────
+
+    def configure_optimizers(self):
+        params = [
+            {
+                "params": (
+                    p for p in self.parameters() if p.requires_grad and p.ndim >= 2
+                ),
+                "weight_decay": self.weight_decay,
+            },
+            {
+                "params": (
+                    p for p in self.parameters() if p.requires_grad and p.ndim <= 1
+                ),
+                "weight_decay": 0,
+            },
+        ]
+        optimizer = torch.optim.AdamW(params, lr=self.lr)
+        scheduler = transformers.get_constant_schedule_with_warmup(
+            optimizer, num_warmup_steps=self.warmup_steps
+        )
+        return dict(
+            optimizer=optimizer,
+            lr_scheduler={"scheduler": scheduler, "interval": "step"},
+        )
 
     # ── stage control ──────────────────────────────────────────────────────────
 

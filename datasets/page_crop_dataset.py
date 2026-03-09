@@ -83,6 +83,7 @@ class PageCropDataset(Dataset):
         self.dataset_length = dataset_length
 
         self.epoch = 0
+        self._direct_stage = None
         self.w2i = None
         self.i2w = None
         self.padding_token = 0
@@ -151,19 +152,45 @@ class PageCropDataset(Dataset):
         self.gt_tokens = [self._gt_cache[gt] for _, gt, _ in self.samples]
 
         # ── pre-compute per-N eligible indices ───────────────────────────────
-        # eligible_for[n] = list of indices where sample N <= n
+        # At stage S, each page contributes its min(S, page_max_n) crop —
+        # i.e. the S-system crop if available, else the full page of that piece.
+        # Build a lookup: page_id → max N available
+        import re as _re
+        page_max_n: dict = {}
+        for img_path, _, n in self.samples:
+            m = _re.search(r"img_(\d+)_n", img_path)
+            if m:
+                pid = int(m.group(1))
+                page_max_n[pid] = max(page_max_n.get(pid, 0), n)
+
+        # For each sample, record its page id
+        sample_page = []
+        for img_path, _, _ in self.samples:
+            m = _re.search(r"img_(\d+)_n", img_path)
+            sample_page.append(int(m.group(1)) if m else -1)
+
         max_n = max(n for _, _, n in self.samples)
         self._eligible_for = {}
         for stage_n in range(1, max_n + 1):
-            self._eligible_for[stage_n] = [
-                i for i, (_, _, n) in enumerate(self.samples) if n <= stage_n
-            ]
+            eligible = []
+            for i, (_, _, n) in enumerate(self.samples):
+                pid = sample_page[i]
+                target = min(stage_n, page_max_n.get(pid, stage_n))
+                if n == target:
+                    eligible.append(i)
+            self._eligible_for[stage_n] = eligible
 
     # ── curriculum stage API ─────────────────────────────────────────────────
 
     def get_stage(self, epoch: int) -> int:
+        if self._direct_stage is not None:
+            return self._direct_stage
         stage = (epoch // self.increase_epochs) + self.curriculum_start
         return min(stage, self.curriculum_start + self.num_cl_stages - 1)
+
+    def set_stage_direct(self, stage: int):
+        """Override epoch-based stage with a fixed value (for dynamic curriculum)."""
+        self._direct_stage = stage
 
     def get_stage_calculator(self):
         """Return a callable epoch → stage for use by CurriculumSMTTrainer."""
@@ -174,7 +201,6 @@ class PageCropDataset(Dataset):
         return self.get_stage(0)
 
     def set_epoch(self, epoch: int):
-        """Call at the start of each epoch so __getitem__ uses the right stage."""
         self.epoch = epoch
 
     # ── vocab API ────────────────────────────────────────────────────────────

@@ -1,16 +1,23 @@
 # ── Page-crop 2-stage curriculum (sanity check) ───────────────────────────────
-# Curriculum stages:
-#   stage 1 → N ∈ {1}      epochs   0 –  49
-#   stage 2 → N ∈ {1,2}    epochs  50 –  99
-# Total: 100 epochs
+# Curriculum advances from stage 1 → 2 when val/ser < ser_threshold
+# for `patience` consecutive validation epochs.
 # ─────────────────────────────────────────────
 
+# PATHS
+train_paths.data_path   = "data/jazzmus_pagecrop"
+train_paths.checkpoint  = "../ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
+train_paths.weights_dir = "weights/pagecrop"
+
 # DATASET
-PageCropDataset.fixed_img_height = None     # keep raw stacked height (N × 128 px)
-PageCropDataset.increase_epochs  = 50
-PageCropDataset.num_cl_stages    = 2   # sanity check: stages 1,2 only
+PageCropDataset.fixed_img_height = None
+PageCropDataset.num_cl_stages    = 2
 PageCropDataset.curriculum_start = 1
 PageCropDataset.dataset_length   = 3500
+
+# CURRICULUM
+DynamicCurriculumAdvancer.num_cl_stages  = 2
+DynamicCurriculumAdvancer.ser_threshold  = 0.10
+DynamicCurriculumAdvancer.patience       = 3
 
 # MODEL
 SMT_Trainer.warmup_steps   = 150
@@ -18,7 +25,9 @@ SMT_Trainer.load_pretrained = False
 
 # TRAINING HYPERPARAMS
 train_hparams.lr                      = 5e-5
-train_hparams.accumulate_grad_batches = 64
+train_hparams.accumulate_grad_batches = 8
+train_hparams.batch_size              = 8
+train_hparams.num_workers             = 4
 
 # VOCAB
 make_vocabulary.pathToSave = "vocab"
