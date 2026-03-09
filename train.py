@@ -343,7 +343,7 @@ def train(
         batch_size=val_batch_size,
         num_workers=num_workers,
         collate_fn=batch_preparation_img2seq,
-        persistent_workers=False,
+        persistent_workers=(num_workers > 0),
     )
     test_loader = DataLoader(
         test_set,
