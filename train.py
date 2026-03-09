@@ -43,50 +43,99 @@ from jazzmus.dataset.smt_dataset import batch_preparation_img2seq
 from jazzmus.dataset.smt_dataset_utils import check_and_retrieveVocabulary
 
 
-# ── gin-configurable hyperparameter holder ─────────────────────────────────────
+# ── gin-configurable hyperparameter holders ────────────────────────────────────
 
 @gin.configurable
-def train_hparams(lr: float = 5e-5, accumulate_grad_batches: int = 64):
-    """Gin-configurable holder for training hyperparameters.
+def train_hparams(
+    lr: float = 5e-5,
+    accumulate_grad_batches: int = 64,
+    batch_size: int = 1,
+    num_workers: int = 4,
+):
+    """Gin-configurable training hyperparameters. CLI args override gin values."""
+    return lr, accumulate_grad_batches, batch_size, num_workers
 
-    Set in the gin config as:
-        train_hparams.lr                      = 5e-5
-        train_hparams.accumulate_grad_batches = 64
-    CLI args (--lr, --accumulate_grad_batches) override gin values.
+
+@gin.configurable
+def train_paths(
+    data_path:   str = "data/jazzmus_pagecrop",
+    checkpoint:  str = "../ISMIR-Jazzmus/weights/smt/smt_0.ckpt",
+    weights_dir: str = "weights/pagecrop",
+):
+    """Gin-configurable paths. CLI args override gin values."""
+    return data_path, checkpoint, weights_dir
+
+
+# ── dynamic curriculum callback ────────────────────────────────────────────────
+
+@gin.configurable
+class DynamicCurriculumAdvancer(Callback):
+    """Advances curriculum stage when val/ser drops below a threshold.
+
+    Args:
+        train_set:      training dataset (passed at runtime, not from gin)
+        val_set:        validation dataset (passed at runtime, not from gin)
+        num_cl_stages:  total number of stages
+        ser_threshold:  advance when val/ser < this value
+        patience:       consecutive val epochs below threshold before advancing
     """
-    return lr, accumulate_grad_batches
 
+    def __init__(
+        self,
+        train_set:     PageCropDataset,
+        val_set:       PageCropDataset,
+        num_cl_stages: int   = 11,
+        ser_threshold: float = 0.10,
+        patience:      int   = 3,
+    ):
+        self.train_set     = train_set
+        self.val_set       = val_set
+        self.num_cl_stages = num_cl_stages
+        self.ser_threshold = ser_threshold
+        self.patience      = patience
+        self._stage        = 1
+        self._epochs_below = 0
 
-# ── epoch callback to advance curriculum stage ─────────────────────────────────
+        train_set.set_stage_direct(1)
+        val_set.set_stage_direct(1)
 
-class EpochSetter(Callback):
-    """Propagates the current epoch to train and val datasets before each epoch.
+    def on_train_start(self, trainer: L.Trainer, pl_module: L.LightningModule):
+        pl_module.set_stage(self._stage)
+        pl_module.set_stage_calculator(lambda epoch: self._stage)
 
-    Both datasets need the epoch so curriculum stage filtering works correctly
-    at validation time (val is filtered to the same N<=stage as train).
-    """
-
-    def __init__(self, train_set: PageCropDataset, val_set: PageCropDataset):
-        self.train_set = train_set
-        self.val_set   = val_set
-
-    def on_train_epoch_start(self, trainer: L.Trainer, pl_module: L.LightningModule):
-        self.train_set.set_epoch(trainer.current_epoch)
-        self.val_set.set_epoch(trainer.current_epoch)
+    def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule):
+        if self._stage >= self.num_cl_stages:
+            return
+        val_ser = trainer.callback_metrics.get("val/ser")
+        if val_ser is None:
+            return
+        if float(val_ser) < self.ser_threshold:
+            self._epochs_below += 1
+        else:
+            self._epochs_below = 0
+        if self._epochs_below >= self.patience:
+            self._stage = min(self._stage + 1, self.num_cl_stages)
+            self._epochs_below = 0
+            self.train_set.set_stage_direct(self._stage)
+            self.val_set.set_stage_direct(self._stage)
+            pl_module.set_stage(self._stage)
+            print(f"\n  ── Curriculum → stage {self._stage}  "
+                  f"(val/ser={float(val_ser):.4f} < {self.ser_threshold}) ──")
 
 
 # ── main training function ─────────────────────────────────────────────────────
 
 def train(
     config: str,
-    checkpoint: str,
     fold: int = 0,
-    data_path: str = "data/jazzmus_pagecrop",
     epochs: int = 10000,
-    batch_size: int = 1,
-    num_workers: int = 4,
     accumulate_grad_batches: int = None,   # read from gin; CLI overrides
+    batch_size: int = None,                # read from gin; CLI overrides
+    num_workers: int = None,               # read from gin; CLI overrides
     lr: float = None,                      # read from gin; CLI overrides
+    data_path: str = None,                 # read from gin; CLI overrides
+    checkpoint: str = None,                # read from gin; CLI overrides
+    weights_dir: str = None,               # read from gin; CLI overrides
     debug: bool = False,
 ):
     gc.collect()
@@ -95,23 +144,37 @@ def train(
 
     gin.parse_config_file(config)
 
-    for folder in ("weights/pagecrop", "logs", "vocab"):
-        os.makedirs(folder, exist_ok=True)
-
-    # Resolve hyperparams: gin config is the default, CLI arg overrides
-    gin_lr, gin_accum = train_hparams()
+    # Resolve all params: gin config is the default, CLI arg overrides
+    gin_lr, gin_accum, gin_bs, gin_nw = train_hparams()
+    gin_data, gin_ckpt, gin_wts        = train_paths()
     if lr is None:
         lr = gin_lr
     if accumulate_grad_batches is None:
         accumulate_grad_batches = gin_accum
+    if batch_size is None:
+        batch_size = gin_bs
+    if num_workers is None:
+        num_workers = gin_nw
+    if data_path is None:
+        data_path = gin_data
+    if checkpoint is None:
+        checkpoint = gin_ckpt
+    if weights_dir is None:
+        weights_dir = gin_wts
+
+    for folder in (weights_dir, "logs", "vocab"):
+        os.makedirs(folder, exist_ok=True)
 
     print("PAGE-CROP CURRICULUM TRAINING")
-    print(f"  Config     : {config}")
-    print(f"  Checkpoint : {checkpoint}")
-    print(f"  Data path  : {data_path}")
-    print(f"  Fold       : {fold}")
-    print(f"  LR         : {lr}")
-    print(f"  Accum grad : {accumulate_grad_batches}")
+    print(f"  Config      : {config}")
+    print(f"  Checkpoint  : {checkpoint}")
+    print(f"  Data path   : {data_path}")
+    print(f"  Weights dir : {weights_dir}")
+    print(f"  Fold        : {fold}")
+    print(f"  LR          : {lr}")
+    print(f"  Batch size  : {batch_size}  (effective: {batch_size * accumulate_grad_batches})")
+    print(f"  Accum grad  : {accumulate_grad_batches}")
+    print(f"  Num workers : {num_workers}")
 
     # ── datasets ───────────────────────────────────────────────────────────────
     train_set = PageCropDataset(data_path=data_path, split="train", fold=fold, augment=False)
@@ -167,20 +230,24 @@ def train(
         strict=False,
     )
 
-    # Replace output head if vocab size changed (e.g. <linebreak> added)
-    out_layer = model.model.decoder.out_layer
+    # Replace output head if vocab size changed, preserving weights for known tokens
+    out_layer      = model.model.decoder.out_layer
     expected_vocab = train_set.vocab_size()
     if out_layer.out_channels != expected_vocab:
-        print(f"  Replacing output layer: {out_layer.out_channels} → {expected_vocab}")
-        model.model.decoder.out_layer = Conv1d(
-            out_layer.in_channels, expected_vocab, kernel_size=1
-        )
+        print(f"  Resizing output layer: {out_layer.out_channels} → {expected_vocab}")
+        old_weights = out_layer.weight.data          # (old_vocab, d_model, 1)
+        old_w2i     = model.hparams.get("w2i") or {}
+        new_layer   = Conv1d(out_layer.in_channels, expected_vocab, kernel_size=1)
+        for token, new_idx in w2i.items():
+            if token in old_w2i:
+                old_idx = old_w2i[token]
+                if old_idx < old_weights.shape[0]:
+                    new_layer.weight.data[new_idx] = old_weights[old_idx]
+        model.model.decoder.out_layer = new_layer
+        print(f"  Preserved weights for {len(old_w2i)} known tokens; "
+              f"new tokens randomly initialized")
     else:
         print(f"  Output layer OK: {expected_vocab} tokens")
-
-    # Wire up curriculum stage tracking
-    model.set_stage(train_set.curriculum_stage_beginning)
-    model.set_stage_calculator(train_set.get_stage_calculator())
 
     # ── dataloaders ────────────────────────────────────────────────────────────
     train_loader = DataLoader(
@@ -207,12 +274,12 @@ def train(
     )
 
     # ── callbacks ──────────────────────────────────────────────────────────────
-    num_cl_stages   = gin.query_parameter("PageCropDataset.num_cl_stages")
-    increase_epochs = gin.query_parameter("PageCropDataset.increase_epochs")
-    total_cl_epochs = num_cl_stages * increase_epochs
+    num_cl_stages = gin.query_parameter("DynamicCurriculumAdvancer.num_cl_stages")
+
+    curriculum_cb = DynamicCurriculumAdvancer(train_set=train_set, val_set=val_set)
 
     best_ckpt = ModelCheckpoint(
-        dirpath="weights/pagecrop",
+        dirpath=weights_dir,
         filename=f"pagecrop_fold{fold}_best",
         monitor="val/ser",
         mode="min",
@@ -222,7 +289,7 @@ def train(
         save_on_train_epoch_end=False,
     )
     stage_ckpt = ModelCheckpoint(
-        dirpath="weights/pagecrop",
+        dirpath=weights_dir,
         filename=f"pagecrop_fold{fold}_stage{{curriculum/stage:.0f}}",
         monitor="curriculum/stage",
         mode="max",
@@ -230,8 +297,7 @@ def train(
         verbose=True,
         enable_version_counter=False,
     )
-    lr_monitor   = LearningRateMonitor(logging_interval="step")
-    epoch_setter = EpochSetter(train_set, val_set)
+    lr_monitor = LearningRateMonitor(logging_interval="step")
 
     # ── logger ─────────────────────────────────────────────────────────────────
     wandb_logger = WandbLogger(
@@ -245,9 +311,8 @@ def train(
     # ── trainer ────────────────────────────────────────────────────────────────
     trainer = Trainer(
         logger=wandb_logger,
-        callbacks=[best_ckpt, stage_ckpt, lr_monitor, epoch_setter],
+        callbacks=[best_ckpt, stage_ckpt, lr_monitor, curriculum_cb],
         max_epochs=epochs,
-        min_epochs=total_cl_epochs,
         precision="bf16-mixed",
         accelerator="auto",
         accumulate_grad_batches=accumulate_grad_batches,
