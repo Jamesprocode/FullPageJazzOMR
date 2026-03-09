@@ -50,10 +50,12 @@ def train_hparams(
     lr: float = 5e-5,
     accumulate_grad_batches: int = 64,
     batch_size: int = 1,
+    val_batch_size: int = 4,
     num_workers: int = 4,
+    check_val_every_n_epoch: int = 5,
 ):
     """Gin-configurable training hyperparameters. CLI args override gin values."""
-    return lr, accumulate_grad_batches, batch_size, num_workers
+    return lr, accumulate_grad_batches, batch_size, val_batch_size, num_workers, check_val_every_n_epoch
 
 
 @gin.configurable
@@ -147,8 +149,8 @@ def train(
     gin.parse_config_file(config)
 
     # Resolve all params: gin config is the default, CLI arg overrides
-    gin_lr, gin_accum, gin_bs, gin_nw          = train_hparams()
-    gin_data, gin_ckpt, gin_wts, gin_synthetic = train_paths()
+    gin_lr, gin_accum, gin_bs, gin_val_bs, gin_nw, gin_val_freq = train_hparams()
+    gin_data, gin_ckpt, gin_wts, gin_synthetic                  = train_paths()
     if lr is None:
         lr = gin_lr
     if accumulate_grad_batches is None:
@@ -163,7 +165,9 @@ def train(
         checkpoint = gin_ckpt
     if weights_dir is None:
         weights_dir = gin_wts
-    synthetic_data_path = gin_synthetic   # None = no synthetic data
+    synthetic_data_path       = gin_synthetic   # None = no synthetic data
+    val_batch_size            = gin_val_bs
+    check_val_every_n_epoch   = gin_val_freq
 
     for folder in (weights_dir, "logs", "vocab"):
         os.makedirs(folder, exist_ok=True)
@@ -266,14 +270,14 @@ def train(
     )
     val_loader = DataLoader(
         val_set,
-        batch_size=1,
+        batch_size=val_batch_size,
         num_workers=num_workers,
         collate_fn=batch_preparation_img2seq,
         persistent_workers=(num_workers > 0),
     )
     test_loader = DataLoader(
         test_set,
-        batch_size=1,
+        batch_size=val_batch_size,
         num_workers=num_workers,
         collate_fn=batch_preparation_img2seq,
         persistent_workers=(num_workers > 0),
@@ -323,6 +327,7 @@ def train(
         accelerator="cpu" if cpu_test else "auto",
         accumulate_grad_batches=1 if cpu_test else accumulate_grad_batches,
         fast_dev_run=True if cpu_test else debug,
+        check_val_every_n_epoch=1 if cpu_test else check_val_every_n_epoch,
         deterministic=False,
     )
 
