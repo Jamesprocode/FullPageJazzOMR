@@ -35,7 +35,7 @@ train_hparams.accumulate_grad_batches   = 8
 train_hparams.batch_size                = 8
 train_hparams.val_batch_size            = 1
 train_hparams.num_workers               = 4
-train_hparams.check_val_every_n_epoch   = 5
+train_hparams.check_val_every_n_epoch   = 10
 
 # VOCAB
 make_vocabulary.pathToSave = "vocab"
