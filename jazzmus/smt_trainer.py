@@ -191,7 +191,14 @@ class SMT_Trainer(L.LightningModule):
             predicted_sequence, _ = self.model.predict(input=x_single)
 
             dec = untokenize(predicted_sequence)
-            gt = untokenize([self.model.i2w[token.item()] for token in y_single[:-1]])
+            # Strip padding: take GT tokens up to (not including) the first <eos>/<pad>
+            gt_tokens = [self.model.i2w[token.item()] for token in y_single]
+            clean = []
+            for t in gt_tokens:
+                if t in ("<eos>", "<pad>"):
+                    break
+                clean.append(t)
+            gt = untokenize(clean)
 
             self.preds.append(dec)
             self.grtrs.append(gt)

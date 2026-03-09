@@ -18,8 +18,12 @@ PageCropDataset.dataset_length   = 3500
 
 # CURRICULUM
 DynamicCurriculumAdvancer.num_cl_stages  = 2
-DynamicCurriculumAdvancer.ser_threshold  = 0.30
+DynamicCurriculumAdvancer.ser_threshold  = 0.20
 DynamicCurriculumAdvancer.patience       = 3
+DynamicCurriculumAdvancer.final_patience = 10   # val epochs without improvement before early stop
+
+# FINAL STAGE
+final_stage_hparams.final_patience = 10
 
 # MODEL
 SMT_Trainer.warmup_steps   = 150
@@ -29,7 +33,7 @@ SMT_Trainer.load_pretrained = False
 train_hparams.lr                        = 5e-5
 train_hparams.accumulate_grad_batches   = 8
 train_hparams.batch_size                = 8
-train_hparams.val_batch_size            = 4
+train_hparams.val_batch_size            = 1
 train_hparams.num_workers               = 4
 train_hparams.check_val_every_n_epoch   = 5
 
