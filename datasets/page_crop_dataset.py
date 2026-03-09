@@ -34,6 +34,7 @@ import cv2
 import gin
 import numpy as np
 import torch
+from PIL import Image
 from torch.utils.data import Dataset
 
 from jazzmus.dataset.data_preprocessing import augment, convert_img_to_tensor
@@ -48,16 +49,19 @@ class PageCropDataset(Dataset):
     Curriculum dataset backed by pre-computed N-system page crops.
 
     Args:
-        data_path:       path to jazzmus_pagecrop/ directory (contains splits/)
-        split:           "train", "val", or "test"
-        fold:            fold index (int)
-        fixed_img_height: target height in pixels when loading images.
-                         Set to None to keep original stacked height (N × system_height).
-        augment:         apply random augmentation (train only)
-        increase_epochs: epochs per curriculum stage
-        num_cl_stages:   total number of curriculum stages
+        data_path:        path to jazzmus_pagecrop/ directory (contains splits/)
+        split:            "train", "val", or "test"
+        fold:             fold index (int)
+        fixed_img_height: if set, ALL images are scaled to exactly this height.
+                          Prefer system_height instead (scales per-system uniformly).
+        system_height:    if set (and fixed_img_height is None), each image is scaled
+                          so that each system row is system_height pixels tall.
+                          Target height for an N-system crop = N * system_height.
+        augment:          apply random augmentation (train only)
+        increase_epochs:  epochs per curriculum stage
+        num_cl_stages:    total number of curriculum stages
         curriculum_start: N value at stage 1 (always 1)
-        dataset_length:  virtual dataset size (number of __getitem__ calls per epoch)
+        dataset_length:   virtual dataset size (number of __getitem__ calls per epoch)
     """
 
     def __init__(
@@ -66,6 +70,7 @@ class PageCropDataset(Dataset):
         split,
         fold,
         fixed_img_height=None,
+        system_height=None,
         augment=False,
         increase_epochs=50,
         num_cl_stages=2,
@@ -77,6 +82,7 @@ class PageCropDataset(Dataset):
         self.split = split
         self.fold = fold
         self.fixed_img_height = fixed_img_height
+        self.system_height = system_height
         self.do_augment = augment
         self.increase_epochs = increase_epochs
         self.num_cl_stages = num_cl_stages
@@ -255,21 +261,33 @@ class PageCropDataset(Dataset):
         """
         Return (max_height, max_width) across all samples.
 
-        Scans image headers without decoding full images for speed.
-        Falls back to reading full images if needed.
+        Uses PIL header-only reads (no pixel decoding) for speed.
+        Applies the same resize logic as __getitem__.
         """
         max_h, max_w = 0, 0
-        for img_path, _, _ in self.samples:
-            img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-            if img is None:
+        for img_path, _, n in self.samples:
+            try:
+                with Image.open(img_path) as im:
+                    w, h = im.size
+            except Exception:
                 continue
-            h, w = img.shape[:2]
-            if self.fixed_img_height is not None and h != self.fixed_img_height:
-                w = max(1, int(round(w * self.fixed_img_height / h)))
-                h = self.fixed_img_height
+            h, w = self._scaled_hw(h, w, n)
             max_h = max(max_h, h)
             max_w = max(max_w, w)
         return max_h, max_w
+
+    def _scaled_hw(self, h: int, w: int, n: int):
+        """Return (h, w) after applying the same scaling as __getitem__."""
+        if self.fixed_img_height is not None:
+            target_h = self.fixed_img_height
+        elif self.system_height is not None:
+            target_h = n * self.system_height
+        else:
+            return h, w
+        if h != target_h:
+            w = max(1, int(round(w * target_h / h)))
+            h = target_h
+        return h, w
 
     def get_max_seqlen(self) -> int:
         return max(len(tokens) for tokens in self.gt_tokens)
@@ -297,12 +315,10 @@ class PageCropDataset(Dataset):
         if img is None:
             # Fallback: white image
             img = np.full((128, 128), 255, dtype=np.uint8)
-        if self.fixed_img_height is not None:
-            h, w = img.shape[:2]
-            if h != self.fixed_img_height:
-                new_w = max(1, int(round(w * self.fixed_img_height / h)))
-                img = cv2.resize(img, (new_w, self.fixed_img_height),
-                                 interpolation=cv2.INTER_LINEAR)
+        h, w = img.shape[:2]
+        target_h, target_w = self._scaled_hw(h, w, n)
+        if target_h != h:
+            img = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
 
         if self.do_augment:
             x = augment(img)

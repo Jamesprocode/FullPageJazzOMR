@@ -11,6 +11,7 @@ train_paths.synthetic_data_path  = "data/jazzmus_synthetic"   # set to None to d
 
 # DATASET
 PageCropDataset.fixed_img_height = None
+PageCropDataset.system_height    = 256   # each system row = 256px; N-system crop → N*256 tall
 PageCropDataset.num_cl_stages    = 11
 PageCropDataset.curriculum_start = 1
 PageCropDataset.dataset_length   = 3500

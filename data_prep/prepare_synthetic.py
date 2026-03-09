@@ -1,18 +1,19 @@
 """
-Offline data preparation: generate pre-computed synthetic N-system stacks.
+Offline data preparation: generate pre-computed synthetic N-system crops.
 
-Reads individual system crops from jazzmus_systems/ and stacks N consecutive
-systems per page to produce synthetic multi-system training images.
+Mirrors prepare_pagecrop.py exactly, but uses the JAZZMUS_Synthetic parquet
+instead of the real handwritten parquet.
 
-GT is extracted from the corresponding full-page kern file (same as
-prepare_pagecrop.py) — NOT by concatenating individual system kern files.
-This keeps the GT format identical to real page crops, including the
-full-page header (title, composer, etc.) present in the first system block.
+For each synthetic page, crops the full rendered image vertically to include
+only the first N systems (N = 1 … min(max_n, systems_on_page)), using
+bounding-box coordinates from the synthetic parquet.  GT is cut from the
+per-system kern fields in the parquet annotation (identical logic to
+build_gt_from_fullpage in prepare_pagecrop.py).
 
 Only a train split is generated — val and test always use real handwritten data.
 
 Output:
-  - data/jazzmus_synthetic/jpg/img_<X>_n<N>.jpg  — stacked system image
+  - data/jazzmus_synthetic/jpg/img_<X>_n<N>.jpg  — cropped synthetic image
   - data/jazzmus_synthetic/gt/img_<X>_n<N>.txt   — GT kern (raw, not tokenized)
 
 Split file written to data/jazzmus_synthetic/splits/train_{fold}.txt
@@ -20,22 +21,20 @@ with format:  <img_path> <gt_path> <N>
 
 Run from the FullPageJazzOMR/ project root:
     python data_prep/prepare_synthetic.py \\
-        --jazzmus_systems  ../ISMIR-Jazzmus/data/jazzmus_systems \\
-        --jazzmus_fullpage ../ISMIR-Jazzmus/data/jazzmus_fullpage \\
-        --out_dir          data/jazzmus_synthetic \\
-        --folds 0 \\
-        --max_n 11 \\
-        --system_height 256
+        --parquet  ../JAZZMUS/JAZZMUS_Synthetic/data/train-00000-of-00001.parquet \\
+        --out_dir  data/jazzmus_synthetic \\
+        --max_n    11 \\
+        --bottom_pad 20
 """
 
 import argparse
-import re
+import ast
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 import cv2
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -44,36 +43,59 @@ SPINE_TERM = "*-"
 
 # ── GT helpers ──────────────────────────────────────────────────────────────────
 
-def build_gt_from_fullpage(fullpage_gt_path: Path, n: int) -> list:
+def _extract_block(kern_text: str, is_first: bool) -> list:
     """
-    Extract the first n systems from the full-page kern GT as raw kern lines.
+    Extract the music block from one system's kern text field.
 
-    Identical logic to prepare_pagecrop.py:
-    - Splits on !!linebreak:original to get per-system blocks
-    - Keeps the first n blocks (preserving title/header from block 0)
-    - Strips *- terminators from inner blocks, adds !!linebreak:original between
-    - Ensures *- terminators on the last block
+    System kern text has one of two shapes:
+
+      first system  : header lines  →  music lines  →  !!linebreak:original  →  *-
+      later systems : header lines  →  !!linebreak:original  →  music lines
+                      →  !!linebreak:original  →  *-
+
+    Returns only the music portion as a list of lines (strings with \\n).
     """
-    with open(fullpage_gt_path) as f:
-        all_lines = f.readlines()
+    lines = kern_text.splitlines(keepends=True)
+    lines = [l if l.endswith("\n") else l + "\n" for l in lines if l.strip()]
 
-    # Split into per-system blocks on the !!linebreak:original marker
-    blocks = []
-    current = []
-    for line in all_lines:
-        if line.strip() == "!!linebreak:original":
-            blocks.append(current)
-            current = []
-        else:
-            current.append(line)
-    if current:
-        blocks.append(current)
+    if is_first:
+        # Everything before the first !!linebreak:original = header + music
+        block = []
+        for l in lines:
+            if l.strip() == "!!linebreak:original":
+                break
+            block.append(l)
+        return block
+    else:
+        # Skip header lines (everything up to and including the first
+        # !!linebreak:original), then collect music up to the second one.
+        found_lb = False
+        block = []
+        for l in lines:
+            if l.strip() == "!!linebreak:original":
+                if not found_lb:
+                    found_lb = True   # consume the header-end marker
+                else:
+                    break             # stop at the trailing linebreak
+            elif found_lb:
+                block.append(l)
+        return block
 
-    selected = blocks[:n]
+
+def build_gt_from_systems(systems: list, n: int) -> list:
+    """
+    Build GT kern for the first n systems by cutting from the parquet kern fields.
+
+    Identical output format to build_gt_from_fullpage() in prepare_pagecrop.py:
+      - inner blocks have *- stripped and end with !!linebreak:original
+      - last block ends with *-  *-
+    """
+    blocks = [_extract_block(systems[i]["**kern"], i == 0) for i in range(n)]
+
     kern_lines = []
-    for i, block in enumerate(selected):
+    for i, block in enumerate(blocks):
         if i < n - 1:
-            # Inner block: strip *- terminators, add linebreak marker
+            # Inner block: strip any stray *- terminators, add linebreak
             block = [l for l in block
                      if not all(c.strip() in (SPINE_TERM, "") for c in l.split("\t"))]
             kern_lines.extend(block)
@@ -91,87 +113,50 @@ def build_gt_from_fullpage(fullpage_gt_path: Path, n: int) -> list:
     return kern_lines
 
 
-# ── image stacking ──────────────────────────────────────────────────────────────
+# ── image cropping ──────────────────────────────────────────────────────────────
 
-def stack_images(img_paths: list, n: int, system_height: int) -> np.ndarray:
-    """Load and vertically stack the first n system images."""
-    resized = []
-    for p in img_paths[:n]:
-        img = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
-        if img is None:
-            raise FileNotFoundError(f"Cannot read image: {p}")
-        h, w = img.shape[:2]
-        if h != system_height:
-            new_w = max(1, int(round(w * system_height / h)))
-            img = cv2.resize(img, (new_w, system_height), interpolation=cv2.INTER_LINEAR)
-        resized.append(img)
-
-    max_w = max(img.shape[1] for img in resized)
-    padded = [
-        np.pad(img, ((0, 0), (0, max_w - img.shape[1])), constant_values=255)
-        for img in resized
-    ]
-    return np.vstack(padded)
+def crop_page(img: np.ndarray, systems: list, n: int, bottom_pad: int) -> np.ndarray:
+    """Crop full-page image to include only the first n systems (same as prepare_pagecrop)."""
+    crop_y = systems[n - 1]["bounding_box"]["toY"] + bottom_pad
+    crop_y = min(crop_y, img.shape[0])
+    return img[:crop_y, :]
 
 
 # ── main generation ─────────────────────────────────────────────────────────────
 
-def generate_synthetic(fold, jazzmus_systems, jazzmus_fullpage, out_dir, max_n, system_height):
-    """Generate N-system synthetic stacks for one fold (train only)."""
-    split_file = jazzmus_systems / "splits" / f"train_{fold}.txt"
-    if not split_file.exists():
-        print(f"  Skipping fold {fold}: split file not found at {split_file}")
-        return []
-
-    base_dir = jazzmus_systems.parent.parent   # .../ISMIR-Jazzmus
-
+def generate_synthetic(parquet_df, out_dir, max_n, bottom_pad):
+    """Generate N-system crops for all pages in the synthetic parquet."""
     jpg_dir = out_dir / "jpg"
     gt_dir  = out_dir / "gt"
     jpg_dir.mkdir(parents=True, exist_ok=True)
     gt_dir.mkdir(parents=True, exist_ok=True)
 
-    fullpage_gt_dir = jazzmus_fullpage / "gt"
-
-    # Parse split file and group by page
-    pages = defaultdict(list)   # page_idx → list of (sys_idx, img_path)
-    with open(split_file) as f:
-        for line in f:
-            parts = line.strip().split()
-            if len(parts) < 2:
-                continue
-            raw_img = parts[0]
-
-            img_path = Path(raw_img)
-            if not img_path.exists():
-                img_path = base_dir / raw_img
-
-            m = re.search(r"img_(\d+)_(\d+)", str(img_path))
-            if not m:
-                continue
-            page_idx = int(m.group(1))
-            sys_idx  = int(m.group(2))
-            pages[page_idx].append((sys_idx, img_path))
-
-    # Sort systems within each page
-    for page_idx in pages:
-        pages[page_idx].sort(key=lambda t: t[0])
-
-    print(f"\n── synthetic train fold {fold}  (N=1..{max_n}) ───")
+    print(f"\n── synthetic train  (N=1..{max_n}) ───")
 
     split_entries = []
     n_generated = 0
     n_skipped   = 0
 
-    for page_idx, systems in sorted(pages.items()):
-        num_sys = len(systems)
-        img_paths = [s[1] for s in systems]
+    for page_idx, row in parquet_df.iterrows():
+        ann = row["annotation"]
+        if isinstance(ann, str):
+            ann = ast.literal_eval(ann)
 
-        # Full-page kern GT for this page
-        fullpage_gt_path = fullpage_gt_dir / f"img_{page_idx}.txt"
-        if not fullpage_gt_path.exists():
-            print(f"  Warning: fullpage GT not found for page {page_idx}: {fullpage_gt_path}")
-            n_skipped += num_sys
+        systems = ann.get("systems", [])
+        if not systems:
+            n_skipped += 1
             continue
+
+        # Decode full-page image from parquet bytes
+        img_bytes = row["image"]["bytes"]
+        arr = np.frombuffer(img_bytes, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            print(f"  Warning: could not decode image for page {page_idx}")
+            n_skipped += 1
+            continue
+
+        num_sys = len(systems)
 
         for n in range(1, min(max_n, num_sys) + 1):
             stem    = f"img_{page_idx}_n{n}"
@@ -179,11 +164,15 @@ def generate_synthetic(fold, jazzmus_systems, jazzmus_fullpage, out_dir, max_n, 
             out_jpg = jpg_dir / f"{stem}.jpg"
 
             try:
-                kern_lines = build_gt_from_fullpage(fullpage_gt_path, n)
+                kern_lines = build_gt_from_systems(systems, n)
                 out_gt.write_text("".join(kern_lines))
 
-                stacked = stack_images(img_paths, n, system_height)
-                cv2.imwrite(str(out_jpg), stacked)
+                if n == num_sys:
+                    # Last system = full page — no crop
+                    cv2.imwrite(str(out_jpg), img)
+                else:
+                    cropped = crop_page(img, systems, n, bottom_pad)
+                    cv2.imwrite(str(out_jpg), cropped)
 
                 rel_jpg = out_jpg.relative_to(out_dir.parent)
                 rel_gt  = out_gt.relative_to(out_dir.parent)
@@ -208,39 +197,40 @@ def write_split_file(entries, out_dir, fold):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate synthetic N-system stacks from system crops."
+        description="Generate synthetic N-system crops from the JAZZMUS_Synthetic parquet."
     )
-    parser.add_argument("--jazzmus_systems", type=Path,
-                        default=Path("../ISMIR-Jazzmus/data/jazzmus_systems_syn"))
-    parser.add_argument("--jazzmus_fullpage", type=Path,
-                        default=Path("../ISMIR-Jazzmus/data/jazzmus_fullpage"),
-                        help="Path to jazzmus_fullpage (for full-page kern GT files)")
+    parser.add_argument("--parquet", type=Path,
+                        default=Path("../JAZZMUS/JAZZMUS_Synthetic/data/train-00000-of-00001.parquet"),
+                        help="Path to JAZZMUS_Synthetic parquet with system bounding boxes")
     parser.add_argument("--out_dir", type=Path,
                         default=Path("data/jazzmus_synthetic"))
-    parser.add_argument("--folds", type=int, nargs="+", default=[0])
+    parser.add_argument("--folds", type=int, nargs="+", default=[0],
+                        help="Fold indices to write split files for (all pages used for training)")
     parser.add_argument("--max_n", type=int, default=11)
-    parser.add_argument("--system_height", type=int, default=256,
-                        help="Height in pixels for each system row (default: 256)")
+    parser.add_argument("--bottom_pad", type=int, default=20,
+                        help="Pixels of padding below last system toY (default: 20)")
     args = parser.parse_args()
 
     print(f"Output directory  : {args.out_dir.resolve()}")
-    print(f"Systems source    : {args.jazzmus_systems.resolve()}")
-    print(f"Full-page GT      : {args.jazzmus_fullpage.resolve()}")
+    print(f"Synthetic parquet : {args.parquet.resolve()}")
     print(f"Folds             : {args.folds}")
     print(f"Max N             : {args.max_n}")
-    print(f"System height     : {args.system_height} px")
+    print(f"Bottom pad        : {args.bottom_pad} px")
 
+    print("\nLoading synthetic parquet…")
+    parquet_df = pd.read_parquet(args.parquet)
+    print(f"  {len(parquet_df)} pages")
+
+    entries = generate_synthetic(
+        parquet_df=parquet_df,
+        out_dir=args.out_dir,
+        max_n=args.max_n,
+        bottom_pad=args.bottom_pad,
+    )
+
+    # All synthetic pages are used for training in every fold
     for fold in args.folds:
-        entries = generate_synthetic(
-            fold,
-            jazzmus_systems=args.jazzmus_systems,
-            jazzmus_fullpage=args.jazzmus_fullpage,
-            out_dir=args.out_dir,
-            max_n=args.max_n,
-            system_height=args.system_height,
-        )
-        if entries:
-            write_split_file(entries, args.out_dir, fold)
+        write_split_file(entries, args.out_dir, fold)
 
     print(f"\n✓ Done — data written to {args.out_dir.resolve()}\n")
 

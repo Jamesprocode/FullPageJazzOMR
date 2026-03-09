@@ -1,2 +1,11 @@
 CONTINUATION.md
 data/
+__pycache__/
+*.pyc
+*.pyo
+weights/
+logs/
+vocab/
+wandb/
+*.egg-info/
+.DS_Store
