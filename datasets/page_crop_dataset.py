@@ -71,6 +71,7 @@ class PageCropDataset(Dataset):
         num_cl_stages=2,
         curriculum_start=1,
         dataset_length=3500,
+        synthetic_data_path=None,   # optional: add synthetic train samples
     ):
         super().__init__()
         self.split = split
@@ -113,6 +114,31 @@ class PageCropDataset(Dataset):
                 if not gt_path.exists():
                     gt_path = path_base / raw_gt
                 self.samples.append((str(img_path), str(gt_path), n))
+
+        # ── optionally load synthetic samples (train only) ────────────────────
+        if synthetic_data_path is not None and split == "train":
+            syn_path = Path(synthetic_data_path)
+            syn_file = syn_path / "splits" / f"train_{fold}.txt"
+            syn_base = syn_path.parent
+            if syn_file.exists():
+                n_syn = 0
+                with open(syn_file) as f:
+                    for line in f:
+                        parts = line.strip().split()
+                        if len(parts) < 3:
+                            continue
+                        raw_img, raw_gt, n = parts[0], parts[1], int(parts[2])
+                        img_path = Path(raw_img)
+                        gt_path  = Path(raw_gt)
+                        if not img_path.exists():
+                            img_path = syn_base / raw_img
+                        if not gt_path.exists():
+                            gt_path = syn_base / raw_gt
+                        self.samples.append((str(img_path), str(gt_path), n))
+                        n_syn += 1
+                print(f"  + {n_syn} synthetic samples from {syn_file}")
+            else:
+                print(f"  Warning: synthetic split not found: {syn_file}")
 
         print(f"PageCropDataset [{split}_{fold}]: {len(self.samples)} samples "
               f"(N={sorted(set(n for _,_,n in self.samples))})")
