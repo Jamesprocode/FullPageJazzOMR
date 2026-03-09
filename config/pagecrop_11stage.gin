@@ -1,0 +1,29 @@
+# ── Page-crop 11-stage curriculum (full training) ─────────────────────────────
+# Curriculum stages:
+#   stage  1 → N=1  system   epochs   0 –  49
+#   stage  2 → N=2  systems  epochs  50 –  99
+#   ...
+#   stage 11 → N=11 systems  epochs 500 – 549   (= full page for all real pages)
+# Total curriculum: 550 epochs (11 × 50)
+#
+# Val also uses cropped versions at the current stage N.
+# Test uses full pages only.
+# ─────────────────────────────────────────────
+
+# DATASET
+PageCropDataset.fixed_img_height = None     # keep raw crop height
+PageCropDataset.increase_epochs  = 50
+PageCropDataset.num_cl_stages    = 11
+PageCropDataset.curriculum_start = 1
+PageCropDataset.dataset_length   = 3500
+
+# MODEL
+SMT_Trainer.warmup_steps   = 150
+SMT_Trainer.load_pretrained = False
+
+# TRAINING HYPERPARAMS
+train_hparams.lr                      = 5e-5
+train_hparams.accumulate_grad_batches = 64
+
+# VOCAB
+make_vocabulary.pathToSave = "vocab"
