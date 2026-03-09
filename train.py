@@ -389,6 +389,7 @@ def train(
         accumulate_grad_batches=1 if cpu_test else accumulate_grad_batches,
         fast_dev_run=True if cpu_test else debug,
         check_val_every_n_epoch=1 if cpu_test else check_val_every_n_epoch,
+        log_every_n_steps=5,
         deterministic=False,
     )
 
