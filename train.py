@@ -34,6 +34,15 @@ from lightning.pytorch.callbacks import (
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
+# ── gin-configurable final-stage early-stop patience ───────────────────────────
+
+@gin.configurable
+def final_stage_hparams(
+    final_patience: int = 15,
+):
+    """Gin-configurable final-stage hyperparameters."""
+    return final_patience
+
 # Allow running from project root without installing the package
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -50,7 +59,7 @@ def train_hparams(
     lr: float = 5e-5,
     accumulate_grad_batches: int = 64,
     batch_size: int = 1,
-    val_batch_size: int = 4,
+    val_batch_size: int = 1,
     num_workers: int = 4,
     check_val_every_n_epoch: int = 5,
 ):
@@ -75,55 +84,97 @@ def train_paths(
 class DynamicCurriculumAdvancer(Callback):
     """Advances curriculum stage when val/ser drops below a threshold.
 
+    Before the final stage:  only the *last* checkpoint is kept (no best tracking).
+    At the final stage:      activates the *best* checkpoint (tracked by val/ser)
+                             and applies early stopping with `final_patience`.
+
     Args:
         train_set:      training dataset (passed at runtime, not from gin)
         val_set:        validation dataset (passed at runtime, not from gin)
+        best_ckpt:      ModelCheckpoint to activate at the final stage (passed at runtime)
         num_cl_stages:  total number of stages
         ser_threshold:  advance when val/ser < this value
         patience:       consecutive val epochs below threshold before advancing
+        final_patience: val epochs without improvement before stopping at final stage
     """
 
     def __init__(
         self,
-        train_set:     PageCropDataset,
-        val_set:       PageCropDataset,
-        num_cl_stages: int   = 11,
-        ser_threshold: float = 0.10,
-        patience:      int   = 3,
+        train_set:      PageCropDataset,
+        val_set:        PageCropDataset,
+        best_ckpt:      ModelCheckpoint,
+        num_cl_stages:  int   = 11,
+        ser_threshold:  float = 0.10,
+        patience:       int   = 3,
+        final_patience: int   = 15,
     ):
-        self.train_set     = train_set
-        self.val_set       = val_set
-        self.num_cl_stages = num_cl_stages
-        self.ser_threshold = ser_threshold
-        self.patience      = patience
-        self._stage        = 1
-        self._epochs_below = 0
+        self.train_set      = train_set
+        self.val_set        = val_set
+        self.best_ckpt      = best_ckpt
+        self.num_cl_stages  = num_cl_stages
+        self.ser_threshold  = ser_threshold
+        self.patience       = patience
+        self.final_patience = final_patience
+        self._stage         = 1
+        self._epochs_below  = 0
+        self._at_final      = False
+        self._best_ser      = float("inf")
+        self._no_improve    = 0
 
         train_set.set_stage_direct(1)
         val_set.set_stage_direct(1)
+
+    def _activate_final_stage(self, trainer, pl_module, val_ser):
+        """Switch to best-checkpoint mode and notify."""
+        self._at_final = True
+        self.best_ckpt.save_top_k = 1   # was 0 (disabled) → now tracks best
+        pl_module.set_stage(self._stage)
+        print(f"\n  ── Curriculum → FINAL stage {self._stage}  "
+              f"(val/ser={val_ser:.4f} < {self.ser_threshold}) ──")
+        print(f"  ── Best-val/ser checkpoint now active; early-stop patience={self.final_patience} ──")
 
     def on_train_start(self, trainer: L.Trainer, pl_module: L.LightningModule):
         pl_module.set_stage(self._stage)
         pl_module.set_stage_calculator(lambda epoch: self._stage)
 
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule):
-        if self._stage >= self.num_cl_stages:
-            return
         val_ser = trainer.callback_metrics.get("val/ser")
         if val_ser is None:
             return
-        if float(val_ser) < self.ser_threshold:
+        val_ser = float(val_ser)
+
+        # ── final-stage early stopping ────────────────────────────────────────
+        if self._at_final:
+            if val_ser < self._best_ser:
+                self._best_ser   = val_ser
+                self._no_improve = 0
+            else:
+                self._no_improve += 1
+                print(f"  [EarlyStop] No improvement for {self._no_improve}/{self.final_patience} "
+                      f"val epochs (best val/ser={self._best_ser:.4f})")
+                if self._no_improve >= self.final_patience:
+                    print(f"  ── Early stopping triggered at final stage ──")
+                    trainer.should_stop = True
+            return
+
+        # ── pre-final: check whether to advance stage ─────────────────────────
+        if val_ser < self.ser_threshold:
             self._epochs_below += 1
         else:
             self._epochs_below = 0
+
         if self._epochs_below >= self.patience:
             self._stage = min(self._stage + 1, self.num_cl_stages)
             self._epochs_below = 0
             self.train_set.set_stage_direct(self._stage)
             self.val_set.set_stage_direct(self._stage)
-            pl_module.set_stage(self._stage)
-            print(f"\n  ── Curriculum → stage {self._stage}  "
-                  f"(val/ser={float(val_ser):.4f} < {self.ser_threshold}) ──")
+
+            if self._stage >= self.num_cl_stages:
+                self._activate_final_stage(trainer, pl_module, val_ser)
+            else:
+                pl_module.set_stage(self._stage)
+                print(f"\n  ── Curriculum → stage {self._stage}  "
+                      f"(val/ser={val_ser:.4f} < {self.ser_threshold}) ──")
 
 
 # ── main training function ─────────────────────────────────────────────────────
@@ -284,29 +335,39 @@ def train(
     )
 
     # ── callbacks ──────────────────────────────────────────────────────────────
-    num_cl_stages = gin.query_parameter("DynamicCurriculumAdvancer.num_cl_stages")
+    final_patience = final_stage_hparams()
 
-    curriculum_cb = DynamicCurriculumAdvancer(train_set=train_set, val_set=val_set)
+    # last_ckpt: always saves the most recent checkpoint (for training continuity).
+    # save_top_k=0 means no "best" tracking — only last.ckpt is written.
+    last_ckpt = ModelCheckpoint(
+        dirpath=weights_dir,
+        filename=f"pagecrop_fold{fold}_last",
+        monitor=None,
+        save_top_k=0,
+        save_last=True,
+        verbose=False,
+    )
 
+    # best_ckpt: starts disabled (save_top_k=0).
+    # DynamicCurriculumAdvancer sets save_top_k=1 when the final stage is reached.
     best_ckpt = ModelCheckpoint(
         dirpath=weights_dir,
         filename=f"pagecrop_fold{fold}_best",
         monitor="val/ser",
         mode="min",
-        save_top_k=1,
-        save_last=True,
+        save_top_k=0,           # disabled until final stage
+        save_last=False,
         verbose=True,
         save_on_train_epoch_end=False,
     )
-    stage_ckpt = ModelCheckpoint(
-        dirpath=weights_dir,
-        filename=f"pagecrop_fold{fold}_stage{{curriculum/stage:.0f}}",
-        monitor="curriculum/stage",
-        mode="max",
-        save_top_k=num_cl_stages,
-        verbose=True,
-        enable_version_counter=False,
+
+    curriculum_cb = DynamicCurriculumAdvancer(
+        train_set=train_set,
+        val_set=val_set,
+        best_ckpt=best_ckpt,
+        final_patience=final_patience,
     )
+
     lr_monitor = LearningRateMonitor(logging_interval="step")
 
     # ── logger ─────────────────────────────────────────────────────────────────
@@ -321,7 +382,7 @@ def train(
     # ── trainer ────────────────────────────────────────────────────────────────
     trainer = Trainer(
         logger=wandb_logger,
-        callbacks=[best_ckpt, stage_ckpt, lr_monitor, curriculum_cb],
+        callbacks=[last_ckpt, best_ckpt, lr_monitor, curriculum_cb],
         max_epochs=epochs,
         precision="32" if cpu_test else "bf16-mixed",
         accelerator="cpu" if cpu_test else "auto",
@@ -337,9 +398,11 @@ def train(
         val_dataloaders=val_loader,
     )
 
-    # ── test with best checkpoint ──────────────────────────────────────────────
+    # ── test with best checkpoint (or last if final stage was never reached) ───
+    test_ckpt_path = best_ckpt.best_model_path or last_ckpt.last_model_path
+    print(f"\nTesting with checkpoint: {test_ckpt_path}")
     best_model = CurriculumSMTTrainer.load_from_checkpoint(
-        best_ckpt.best_model_path,
+        test_ckpt_path,
         strict=False,
     )
     best_model.freeze()

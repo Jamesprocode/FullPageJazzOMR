@@ -303,21 +303,27 @@ class PageCropDataset(Dataset):
 
     def __len__(self) -> int:
         # Train: virtual fixed size so Lightning sees a constant epoch length.
-        # Val/test: one N-system crop per page at the current stage.
+        # Val:   one N-system crop per page at the current curriculum stage.
+        # Test:  all samples (full-page crops only), no stage filtering.
         if self.split == "train":
             return self.dataset_length
-        return len(self._stage_eligible())
+        if self.split == "val":
+            return len(self._stage_eligible())
+        return len(self.samples)   # test
 
     def __getitem__(self, index):
         assert self.w2i is not None, "Call set_dictionaries() before iterating."
 
-        eligible = self._stage_eligible()
         if self.split == "train":
             # Curriculum-based random sampling, ignoring the DataLoader index.
-            idx = random.choice(eligible)
-        else:
-            # Val/test: deterministic iteration through stage-eligible samples.
+            idx = random.choice(self._stage_eligible())
+        elif self.split == "val":
+            # Deterministic iteration through stage-eligible samples.
+            eligible = self._stage_eligible()
             idx = eligible[index % len(eligible)]
+        else:
+            # Test: iterate through all samples in order.
+            idx = index
 
         img_path, gt_path, n = self.samples[idx]
         tokens = self.gt_tokens[idx]
