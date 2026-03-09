@@ -18,7 +18,7 @@ PageCropDataset.dataset_length   = 3500
 
 # CURRICULUM
 DynamicCurriculumAdvancer.num_cl_stages  = 2
-DynamicCurriculumAdvancer.ser_threshold  = 0.25
+DynamicCurriculumAdvancer.ser_threshold  = 25.0
 DynamicCurriculumAdvancer.patience       = 3
 DynamicCurriculumAdvancer.final_patience = 10   # val epochs without improvement before early stop
 
