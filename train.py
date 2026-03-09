@@ -202,6 +202,7 @@ def train(
     debug: bool = False,
     cpu_test: bool = False,   # skip image scan, use tiny model dims, fast_dev_run on CPU
 ):
+    torch.set_float32_matmul_precision("high")
     gc.collect()
     torch.cuda.empty_cache()
     seed_everything(seed=42, workers=True)
@@ -324,9 +325,11 @@ def train(
         print(f"  Output layer OK: {expected_vocab} tokens")
 
     # ── dataloaders ────────────────────────────────────────────────────────────
-    # persistent_workers=True: workers stay alive across all epochs.
-    # Stage updates propagate via a shared-memory tensor (_shared_stage) in the
-    # dataset, so workers see the new stage immediately without being respawned.
+    # Train: persistent_workers=True so workers stay alive across epochs.
+    # Stage updates propagate via a shared-memory tensor (_shared_stage).
+    # Val: persistent_workers=False so workers are respawned fresh each val run,
+    # guaranteeing they pick up the correct stage. Val runs infrequently
+    # (check_val_every_n_epoch=10) so the respawn cost is negligible.
     train_loader = DataLoader(
         train_set,
         batch_size=batch_size,
@@ -340,7 +343,7 @@ def train(
         batch_size=val_batch_size,
         num_workers=num_workers,
         collate_fn=batch_preparation_img2seq,
-        persistent_workers=(num_workers > 0),
+        persistent_workers=False,
     )
     test_loader = DataLoader(
         test_set,
