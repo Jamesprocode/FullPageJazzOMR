@@ -324,24 +324,23 @@ def train(
         print(f"  Output layer OK: {expected_vocab} tokens")
 
     # ── dataloaders ────────────────────────────────────────────────────────────
-    # persistent_workers=False is required so that worker processes receive a
-    # fresh copy of the dataset (with the updated _direct_stage) at the start
-    # of each epoch.  With persistent_workers=True, workers keep a stale copy
-    # from when they were first spawned, so stage changes never reach them.
+    # persistent_workers=True: workers stay alive across all epochs.
+    # Stage updates propagate via a shared-memory tensor (_shared_stage) in the
+    # dataset, so workers see the new stage immediately without being respawned.
     train_loader = DataLoader(
         train_set,
         batch_size=batch_size,
         num_workers=num_workers,
         shuffle=True,
         collate_fn=batch_preparation_img2seq,
-        persistent_workers=False,
+        persistent_workers=(num_workers > 0),
     )
     val_loader = DataLoader(
         val_set,
         batch_size=val_batch_size,
         num_workers=num_workers,
         collate_fn=batch_preparation_img2seq,
-        persistent_workers=False,
+        persistent_workers=(num_workers > 0),
     )
     test_loader = DataLoader(
         test_set,
