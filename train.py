@@ -73,9 +73,11 @@ def train_paths(
     checkpoint:           str = "../ISMIR-Jazzmus/weights/smt/smt_0.ckpt",
     weights_dir:          str = "weights/pagecrop",
     synthetic_data_path:  str = None,   # e.g. "data/jazzmus_synthetic"
+    resume:               str = None,   # path to last.ckpt to resume training
+    resume_stage:         int = 1,      # curriculum stage to restore when resuming
 ):
     """Gin-configurable paths. CLI args override gin values."""
-    return data_path, checkpoint, weights_dir, synthetic_data_path
+    return data_path, checkpoint, weights_dir, synthetic_data_path, resume, resume_stage
 
 
 # ── dynamic curriculum callback ────────────────────────────────────────────────
@@ -127,6 +129,7 @@ class DynamicCurriculumAdvancer(Callback):
     def _activate_final_stage(self, trainer, pl_module, val_ser):
         """Switch to best-checkpoint mode and notify."""
         self._at_final = True
+        self._best_ser = val_ser   # anchor to activation epoch, not float("inf")
         self.best_ckpt.save_top_k = 1   # was 0 (disabled) → now tracks best
         pl_module.set_stage(self._stage)
         print(f"\n  ── Curriculum → FINAL stage {self._stage}  "
@@ -163,6 +166,10 @@ class DynamicCurriculumAdvancer(Callback):
         else:
             self._epochs_below = 0
 
+        print(f"  [Curriculum] stage={self._stage}/{self.num_cl_stages}  "
+              f"val/ser={val_ser:.2f}  threshold={self.ser_threshold:.2f}  "
+              f"below={self._epochs_below}/{self.patience}")
+
         if self._epochs_below >= self.patience:
             self._stage = min(self._stage + 1, self.num_cl_stages)
             self._epochs_below = 0
@@ -190,6 +197,8 @@ def train(
     data_path: str = None,                 # read from gin; CLI overrides
     checkpoint: str = None,                # read from gin; CLI overrides
     weights_dir: str = None,               # read from gin; CLI overrides
+    resume: str = None,                    # path to last.ckpt to resume training
+    resume_stage: int = 1,                 # curriculum stage to restore when resuming
     debug: bool = False,
     cpu_test: bool = False,   # skip image scan, use tiny model dims, fast_dev_run on CPU
 ):
@@ -200,8 +209,8 @@ def train(
     gin.parse_config_file(config)
 
     # Resolve all params: gin config is the default, CLI arg overrides
-    gin_lr, gin_accum, gin_bs, gin_val_bs, gin_nw, gin_val_freq = train_hparams()
-    gin_data, gin_ckpt, gin_wts, gin_synthetic                  = train_paths()
+    gin_lr, gin_accum, gin_bs, gin_val_bs, gin_nw, gin_val_freq          = train_hparams()
+    gin_data, gin_ckpt, gin_wts, gin_synthetic, gin_resume, gin_resume_s = train_paths()
     if lr is None:
         lr = gin_lr
     if accumulate_grad_batches is None:
@@ -216,6 +225,10 @@ def train(
         checkpoint = gin_ckpt
     if weights_dir is None:
         weights_dir = gin_wts
+    if resume is None:
+        resume = gin_resume            # None = fresh start
+    if resume_stage == 1:
+        resume_stage = gin_resume_s    # CLI default 1 → use gin value
     synthetic_data_path       = gin_synthetic   # None = no synthetic data
     val_batch_size            = gin_val_bs
     check_val_every_n_epoch   = gin_val_freq
@@ -311,20 +324,24 @@ def train(
         print(f"  Output layer OK: {expected_vocab} tokens")
 
     # ── dataloaders ────────────────────────────────────────────────────────────
+    # persistent_workers=False is required so that worker processes receive a
+    # fresh copy of the dataset (with the updated _direct_stage) at the start
+    # of each epoch.  With persistent_workers=True, workers keep a stale copy
+    # from when they were first spawned, so stage changes never reach them.
     train_loader = DataLoader(
         train_set,
         batch_size=batch_size,
         num_workers=num_workers,
         shuffle=True,
         collate_fn=batch_preparation_img2seq,
-        persistent_workers=(num_workers > 0),
+        persistent_workers=False,
     )
     val_loader = DataLoader(
         val_set,
         batch_size=val_batch_size,
         num_workers=num_workers,
         collate_fn=batch_preparation_img2seq,
-        persistent_workers=(num_workers > 0),
+        persistent_workers=False,
     )
     test_loader = DataLoader(
         test_set,
@@ -368,6 +385,13 @@ def train(
         final_patience=final_patience,
     )
 
+    if resume is not None:
+        # Restore curriculum stage (callback state is not saved in the checkpoint)
+        curriculum_cb._stage = resume_stage
+        train_set.set_stage_direct(resume_stage)
+        val_set.set_stage_direct(resume_stage)
+        print(f"\nResuming from: {resume}  (curriculum stage={resume_stage})")
+
     lr_monitor = LearningRateMonitor(logging_interval="step")
 
     # ── logger ─────────────────────────────────────────────────────────────────
@@ -382,7 +406,10 @@ def train(
     # ── trainer ────────────────────────────────────────────────────────────────
     trainer = Trainer(
         logger=wandb_logger,
-        callbacks=[last_ckpt, best_ckpt, lr_monitor, curriculum_cb],
+        # curriculum_cb MUST come before best_ckpt so that when curriculum_cb
+        # flips best_ckpt.save_top_k=1 at the final stage, best_ckpt still runs
+        # and saves the model for that same val epoch.
+        callbacks=[last_ckpt, curriculum_cb, best_ckpt, lr_monitor],
         max_epochs=epochs,
         precision="32" if cpu_test else "bf16-mixed",
         accelerator="cpu" if cpu_test else "auto",
@@ -397,6 +424,7 @@ def train(
         model=model,
         train_dataloaders=train_loader,
         val_dataloaders=val_loader,
+        ckpt_path=resume,   # None = fresh start; path = resume from checkpoint
     )
 
     # ── test with best checkpoint (or last if final stage was never reached) ───

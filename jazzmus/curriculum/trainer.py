@@ -45,6 +45,7 @@ class CurriculumSMTTrainer(SMT_Trainer):
         self.current_stage: int = 2
         self._stage_calculator: Callable[[int], int] = lambda step: self.current_stage
         self._val_sample: dict | None = None   # stores first val batch for image logging
+        self._last_logged_stage: int = -1      # track stage changes for training image log
 
     # ── lr schedule: warmup + constant ───────────────────────────────────────
 
@@ -109,15 +110,15 @@ class CurriculumSMTTrainer(SMT_Trainer):
         stage = self._stage_calculator(self.current_epoch)
         self.log("curriculum/stage", float(stage), on_step=True, prog_bar=True)
 
-        # Log one sample image per epoch (first batch) so WandB shows
-        # what curriculum stacks look like at each stage.
-        if batch_idx == 0:
+        # Log a training sample image whenever the curriculum stage changes.
+        if batch_idx == 0 and stage != self._last_logged_stage:
+            self._last_logged_stage = stage
             x = batch[0]
             img_np = x[0].squeeze().cpu().numpy()
             self.logger.experiment.log({
-                "curriculum/sample_image": wandb.Image(
+                "curriculum/train_input": wandb.Image(
                     img_np,
-                    caption=f"epoch={self.current_epoch}  stage={stage}",
+                    caption=f"stage={stage}  epoch={self.current_epoch}",
                 ),
             })
 
@@ -192,13 +193,24 @@ class CurriculumSMTTrainer(SMT_Trainer):
         # Chord metrics must be computed before super() clears self.preds / self.grtrs
         self._log_chord_metrics(self.preds, self.grtrs, step="val")
 
-        # Log image + prediction + GT table for the first val sample
+        # Log val input image and prediction table for the first val sample
         if self._val_sample is not None and self.preds:
             stage = int(self._stage_calculator(self.current_epoch))
+
+            # Standalone input image — visible in WandB media panel per stage
+            self.logger.experiment.log({
+                "curriculum/val_input": wandb.Image(
+                    self._val_sample["x"],
+                    caption=f"stage={stage}  epoch={self.current_epoch}  "
+                            f"path={self._val_sample['path']}",
+                ),
+            })
+
+            # Prediction table — shows input + prediction + GT side by side
             table = wandb.Table(columns=["Image", "Path", "Stage", "Prediction", "Ground Truth"])
             table.add_data(
                 wandb.Image(self._val_sample["x"],
-                            caption=f"epoch={self.current_epoch}  stage={stage}"),
+                            caption=f"stage={stage}  epoch={self.current_epoch}"),
                 self._val_sample["path"],
                 stage,
                 self.preds[0],
