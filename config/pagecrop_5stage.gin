@@ -1,0 +1,27 @@
+# ── Page-crop 5-stage curriculum (full training) ─────────────────────────────
+# Curriculum stages:
+#   stage 1 → N ∈ {1}           epochs   0 –  99
+#   stage 2 → N ∈ {1,2}         epochs 100 – 199
+#   stage 3 → N ∈ {1,2,3}       epochs 200 – 299
+#   stage 4 → N ∈ {1,2,3,4}     epochs 300 – 399
+#   stage 5 → N ∈ {1,2,3,4,5}   epochs 400 – 499
+# Total curriculum: 500 epochs
+# ─────────────────────────────────────────────
+
+# DATASET
+PageCropDataset.fixed_img_height = None     # keep raw stacked height (N × 128 px)
+PageCropDataset.increase_epochs  = 100
+PageCropDataset.num_cl_stages    = 5
+PageCropDataset.curriculum_start = 1
+PageCropDataset.dataset_length   = 3500
+
+# MODEL
+SMT_Trainer.warmup_steps   = 150
+SMT_Trainer.load_pretrained = False
+
+# TRAINING HYPERPARAMS
+train_hparams.lr                      = 5e-5
+train_hparams.accumulate_grad_batches = 64
+
+# VOCAB
+make_vocabulary.pathToSave = "vocab"
