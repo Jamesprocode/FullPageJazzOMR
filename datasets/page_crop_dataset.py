@@ -90,7 +90,13 @@ class PageCropDataset(Dataset):
         self.dataset_length = dataset_length
 
         self.epoch = 0
-        self._direct_stage = None
+        # Shared tensor so DataLoader worker processes see stage updates without
+        # needing persistent_workers=False (which kills/respawns workers each epoch).
+        # _shared_stage[0] == -1 means "use epoch-based calculation".
+        self._shared_stage = torch.tensor([-1], dtype=torch.int32).share_memory_()
+        # Per-worker cache: eligible list is recomputed only when stage changes.
+        self._cached_stage: int = -1
+        self._cached_eligible: list = []
         self.w2i = None
         self.i2w = None
         self.padding_token = 0
@@ -218,14 +224,19 @@ class PageCropDataset(Dataset):
     # ── curriculum stage API ─────────────────────────────────────────────────
 
     def get_stage(self, epoch: int) -> int:
-        if self._direct_stage is not None:
-            return self._direct_stage
+        s = int(self._shared_stage[0])
+        if s != -1:
+            return s
         stage = (epoch // self.increase_epochs) + self.curriculum_start
         return min(stage, self.curriculum_start + self.num_cl_stages - 1)
 
     def set_stage_direct(self, stage: int):
-        """Override epoch-based stage with a fixed value (for dynamic curriculum)."""
-        self._direct_stage = stage
+        """Override epoch-based stage with a fixed value (for dynamic curriculum).
+
+        Writes to a shared-memory tensor so persistent DataLoader workers see the
+        updated stage without needing to be respawned each epoch.
+        """
+        self._shared_stage[0] = stage
 
     def get_stage_calculator(self):
         """Return a callable epoch → stage for use by CurriculumSMTTrainer."""
@@ -298,11 +309,18 @@ class PageCropDataset(Dataset):
     # ── dataset interface ────────────────────────────────────────────────────
 
     def _stage_eligible(self):
-        """Return eligible sample indices for the current curriculum stage."""
+        """Return eligible sample indices for the current curriculum stage.
+
+        Result is cached per stage — recomputed only when the stage changes,
+        not on every __getitem__ call.
+        """
         stage = self.get_stage(self.epoch)
-        max_n = max(self._eligible_for.keys())
-        clamped = min(stage, max_n)
-        return self._eligible_for.get(clamped, self._eligible_for[max_n])
+        if stage != self._cached_stage:
+            max_n = max(self._eligible_for.keys())
+            clamped = min(stage, max_n)
+            self._cached_eligible = self._eligible_for.get(clamped, self._eligible_for[max_n])
+            self._cached_stage = stage
+        return self._cached_eligible
 
     def __len__(self) -> int:
         # Train: real eligible set size — DataLoader shuffle=True handles ordering.
