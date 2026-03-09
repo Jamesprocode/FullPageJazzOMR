@@ -140,6 +140,10 @@ class DynamicCurriculumAdvancer(Callback):
         pl_module.set_stage(self._stage)
         pl_module.set_stage_calculator(lambda epoch: self._stage)
 
+    def on_validation_epoch_start(self, trainer: L.Trainer, pl_module: L.LightningModule):
+        print(f"  [Val] epoch={trainer.current_epoch}  stage={self._stage}  "
+              f"val_set_size={len(self.val_set)}")
+
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule):
         val_ser = trainer.callback_metrics.get("val/ser")
         if val_ser is None:
