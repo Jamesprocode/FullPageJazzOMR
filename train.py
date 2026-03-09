@@ -58,12 +58,13 @@ def train_hparams(
 
 @gin.configurable
 def train_paths(
-    data_path:   str = "data/jazzmus_pagecrop",
-    checkpoint:  str = "../ISMIR-Jazzmus/weights/smt/smt_0.ckpt",
-    weights_dir: str = "weights/pagecrop",
+    data_path:            str = "data/jazzmus_pagecrop",
+    checkpoint:           str = "../ISMIR-Jazzmus/weights/smt/smt_0.ckpt",
+    weights_dir:          str = "weights/pagecrop",
+    synthetic_data_path:  str = None,   # e.g. "data/jazzmus_synthetic"
 ):
     """Gin-configurable paths. CLI args override gin values."""
-    return data_path, checkpoint, weights_dir
+    return data_path, checkpoint, weights_dir, synthetic_data_path
 
 
 # ── dynamic curriculum callback ────────────────────────────────────────────────
@@ -137,6 +138,7 @@ def train(
     checkpoint: str = None,                # read from gin; CLI overrides
     weights_dir: str = None,               # read from gin; CLI overrides
     debug: bool = False,
+    cpu_test: bool = False,   # skip image scan, use tiny model dims, fast_dev_run on CPU
 ):
     gc.collect()
     torch.cuda.empty_cache()
@@ -145,8 +147,8 @@ def train(
     gin.parse_config_file(config)
 
     # Resolve all params: gin config is the default, CLI arg overrides
-    gin_lr, gin_accum, gin_bs, gin_nw = train_hparams()
-    gin_data, gin_ckpt, gin_wts        = train_paths()
+    gin_lr, gin_accum, gin_bs, gin_nw          = train_hparams()
+    gin_data, gin_ckpt, gin_wts, gin_synthetic = train_paths()
     if lr is None:
         lr = gin_lr
     if accumulate_grad_batches is None:
@@ -161,6 +163,7 @@ def train(
         checkpoint = gin_ckpt
     if weights_dir is None:
         weights_dir = gin_wts
+    synthetic_data_path = gin_synthetic   # None = no synthetic data
 
     for folder in (weights_dir, "logs", "vocab"):
         os.makedirs(folder, exist_ok=True)
@@ -177,7 +180,8 @@ def train(
     print(f"  Num workers : {num_workers}")
 
     # ── datasets ───────────────────────────────────────────────────────────────
-    train_set = PageCropDataset(data_path=data_path, split="train", fold=fold, augment=False)
+    train_set = PageCropDataset(data_path=data_path, split="train", fold=fold, augment=False,
+                                synthetic_data_path=synthetic_data_path)
     val_set   = PageCropDataset(data_path=data_path, split="val",   fold=fold, augment=False)
     test_set  = PageCropDataset(data_path=data_path, split="test",  fold=fold, augment=False)
 
@@ -197,19 +201,21 @@ def train(
     print(f"  Vocab size    : {train_set.vocab_size()}")
 
     # ── model sizing ───────────────────────────────────────────────────────────
-    # get_max_hw scans every image — only run on train+val to avoid loading test
-    print("\nComputing max H×W across train split (scanning images)…")
-    train_h, train_w = train_set.get_max_hw()
-    val_h,   val_w   = val_set.get_max_hw()
-    max_height = max(train_h, val_h)
-    max_width  = max(train_w, val_w)
-
-    max_len = int(max(
-        train_set.get_max_seqlen(),
-        val_set.get_max_seqlen(),
-    ) * 1.1)   # 10 % headroom
-
-    print(f"  Max H×W    : {max_height} × {max_width}")
+    if cpu_test:
+        # Small fixed dims so torchinfo.summary fits in CPU RAM
+        max_height, max_width, max_len = 256, 512, 512
+        print(f"\n[cpu_test] Skipping image scan — using fixed dims {max_height}×{max_width}, seqlen {max_len}")
+    else:
+        print("\nComputing max H×W across train split (scanning images)…")
+        train_h, train_w = train_set.get_max_hw()
+        val_h,   val_w   = val_set.get_max_hw()
+        max_height = max(train_h, val_h)
+        max_width  = max(train_w, val_w)
+        max_len = int(max(
+            train_set.get_max_seqlen(),
+            val_set.get_max_seqlen(),
+        ) * 1.1)   # 10 % headroom
+        print(f"  Max H×W    : {max_height} × {max_width}")
     print(f"  Max seqlen : {max_len} (with 10 % buffer)")
 
     # ── load checkpoint ────────────────────────────────────────────────────────
@@ -313,10 +319,10 @@ def train(
         logger=wandb_logger,
         callbacks=[best_ckpt, stage_ckpt, lr_monitor, curriculum_cb],
         max_epochs=epochs,
-        precision="bf16-mixed",
-        accelerator="auto",
-        accumulate_grad_batches=accumulate_grad_batches,
-        fast_dev_run=debug,
+        precision="32" if cpu_test else "bf16-mixed",
+        accelerator="cpu" if cpu_test else "auto",
+        accumulate_grad_batches=1 if cpu_test else accumulate_grad_batches,
+        fast_dev_run=True if cpu_test else debug,
         deterministic=False,
     )
 
