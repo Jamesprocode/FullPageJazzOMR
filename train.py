@@ -105,6 +105,8 @@ class DynamicCurriculumAdvancer(Callback):
         train_set:      PageCropDataset,
         val_set:        PageCropDataset,
         best_ckpt:      ModelCheckpoint,
+        weights_dir:    str,
+        fold:           int,
         num_cl_stages:  int   = 11,
         ser_threshold:  float = 0.10,
         patience:       int   = 3,
@@ -113,6 +115,8 @@ class DynamicCurriculumAdvancer(Callback):
         self.train_set      = train_set
         self.val_set        = val_set
         self.best_ckpt      = best_ckpt
+        self.weights_dir    = weights_dir
+        self.fold           = fold
         self.num_cl_stages  = num_cl_stages
         self.ser_threshold  = ser_threshold
         self.patience       = patience
@@ -179,6 +183,12 @@ class DynamicCurriculumAdvancer(Callback):
             self._epochs_below = 0
             self.train_set.set_stage_direct(self._stage)
             self.val_set.set_stage_direct(self._stage)
+
+            # Save one checkpoint per stage advance
+            stage_path = (Path(self.weights_dir)
+                          / f"pagecrop_fold{self.fold}_stage{self._stage - 1}.ckpt")
+            trainer.save_checkpoint(str(stage_path))
+            print(f"  ── Stage checkpoint saved: {stage_path.name} ──")
 
             if self._stage >= self.num_cl_stages:
                 self._activate_final_stage(trainer, pl_module, val_ser)
@@ -372,19 +382,6 @@ def train(
         verbose=False,
     )
 
-    # stage_ckpt: saves one checkpoint per curriculum stage (when stage advances).
-    # Monitored by curriculum/stage logged on every training step.
-    stage_ckpt = ModelCheckpoint(
-        dirpath=weights_dir,
-        filename=f"pagecrop_fold{fold}_stage{{curriculum/stage:.0f}}",
-        monitor="curriculum/stage",
-        mode="max",
-        save_top_k=num_cl_stages,
-        save_last=False,
-        verbose=True,
-        save_on_train_epoch_end=True,
-    )
-
     # best_ckpt: starts disabled (save_top_k=0).
     # DynamicCurriculumAdvancer sets save_top_k=1 when the final stage is reached.
     best_ckpt = ModelCheckpoint(
@@ -402,6 +399,8 @@ def train(
         train_set=train_set,
         val_set=val_set,
         best_ckpt=best_ckpt,
+        weights_dir=weights_dir,
+        fold=fold,
         final_patience=final_patience,
     )
 
@@ -429,7 +428,7 @@ def train(
         # curriculum_cb MUST come before best_ckpt so that when curriculum_cb
         # flips best_ckpt.save_top_k=1 at the final stage, best_ckpt still runs
         # and saves the model for that same val epoch.
-        callbacks=[last_ckpt, curriculum_cb, stage_ckpt, best_ckpt, lr_monitor],
+        callbacks=[last_ckpt, curriculum_cb, best_ckpt, lr_monitor],
         max_epochs=epochs,
         precision="32" if cpu_test else "bf16-mixed",
         accelerator="cpu" if cpu_test else "auto",
