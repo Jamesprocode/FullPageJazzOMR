@@ -320,6 +320,7 @@ class PageCropDataset(Dataset):
             clamped = min(stage, max_n)
             self._cached_eligible = self._eligible_for.get(clamped, self._eligible_for[max_n])
             self._cached_stage = stage
+            print(f"  [Dataset/{self.split}] stage={stage}  eligible={len(self._cached_eligible)} samples")
         return self._cached_eligible
 
     def __len__(self) -> int:
