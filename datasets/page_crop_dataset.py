@@ -184,9 +184,12 @@ class PageCropDataset(Dataset):
         self.gt_tokens = [self._gt_cache[gt] for _, gt, _ in self.samples]
 
         # ── pre-compute per-N eligible indices ───────────────────────────────
-        # At stage S, each page contributes its min(S, page_max_n) crop —
-        # i.e. the S-system crop if available, else the full page of that piece.
-        # Build a lookup: page_id → max N available
+        # Eligibility rule:
+        #   Stage 1       → only 1-system crops (strict).
+        #   Stage N >= 2  → pages with max_n >= N  contribute their N-system crop
+        #                   (strict); pages with 2 <= max_n < N contribute their
+        #                   best available crop (they have "maxed out").
+        #                   1-system-only pages never appear again after stage 1.
         import re as _re
         page_max_n: dict = {}
         for img_path, _, n in self.samples:
@@ -195,20 +198,20 @@ class PageCropDataset(Dataset):
                 pid = int(m.group(1))
                 page_max_n[pid] = max(page_max_n.get(pid, 0), n)
 
-        # For each sample, record its page id
-        sample_page = []
+        sample_pid = []
         for img_path, _, _ in self.samples:
             m = _re.search(r"img_(\d+)_n", img_path)
-            sample_page.append(int(m.group(1)) if m else -1)
+            sample_pid.append(int(m.group(1)) if m else -1)
 
         max_n = max(n for _, _, n in self.samples)
         self._eligible_for = {}
         for stage_n in range(1, max_n + 1):
             eligible = []
             for i, (_, _, n) in enumerate(self.samples):
-                pid = sample_page[i]
-                target = min(stage_n, page_max_n.get(pid, stage_n))
-                if n == target:
+                pmn = page_max_n.get(sample_pid[i], n)
+                target = min(stage_n, pmn)
+                # 1-system-only pages only appear at stage 1
+                if n == target and (pmn >= 2 or stage_n == 1):
                     eligible.append(i)
             self._eligible_for[stage_n] = eligible
 
@@ -343,7 +346,11 @@ class PageCropDataset(Dataset):
         y = torch.from_numpy(
             np.asarray([self.w2i.get(t, self.padding_token) for t in tokens])
         )
-        decoder_input = self._apply_teacher_forcing(y)
+        # Teacher forcing errors only during training — val/test use clean decoder input
+        if self.split == "train":
+            decoder_input = self._apply_teacher_forcing(y)
+        else:
+            decoder_input = y
         return x, decoder_input, y, img_path
 
     def _apply_teacher_forcing(self, sequence: torch.Tensor) -> torch.Tensor:
