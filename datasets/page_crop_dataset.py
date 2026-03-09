@@ -221,6 +221,10 @@ class PageCropDataset(Dataset):
                     eligible.append(i)
             self._eligible_for[stage_n] = eligible
 
+        # Number of unique pages — constant across all stages (one sample per page).
+        # Used as __len__ so Lightning never sees 0 and skips validation.
+        self._n_pages = len(self._eligible_for[self.curriculum_start])
+
     # ── curriculum stage API ─────────────────────────────────────────────────
 
     def get_stage(self, epoch: int) -> int:
@@ -324,12 +328,12 @@ class PageCropDataset(Dataset):
         return self._cached_eligible
 
     def __len__(self) -> int:
-        # Train: real eligible set size — DataLoader shuffle=True handles ordering.
-        # Val:   one N-system crop per page at the current curriculum stage.
-        # Test:  all samples (full-page crops only), no stage filtering.
+        # Always returns a fixed count (one sample per unique page) so Lightning
+        # never sees 0 and skips validation. __getitem__ picks the correct
+        # stage crop via index % len(eligible).
         if self.split == "test":
             return len(self.samples)
-        return len(self._stage_eligible())
+        return self._n_pages
 
     def __getitem__(self, index):
         assert self.w2i is not None, "Call set_dictionaries() before iterating."

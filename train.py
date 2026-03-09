@@ -359,6 +359,7 @@ def train(
 
     # ── callbacks ──────────────────────────────────────────────────────────────
     final_patience = final_stage_hparams()
+    num_cl_stages  = gin.query_parameter("DynamicCurriculumAdvancer.num_cl_stages")
 
     # last_ckpt: always saves the most recent checkpoint (for training continuity).
     # save_top_k=0 means no "best" tracking — only last.ckpt is written.
@@ -369,6 +370,19 @@ def train(
         save_top_k=0,
         save_last=True,
         verbose=False,
+    )
+
+    # stage_ckpt: saves one checkpoint per curriculum stage (when stage advances).
+    # Monitored by curriculum/stage logged on every training step.
+    stage_ckpt = ModelCheckpoint(
+        dirpath=weights_dir,
+        filename=f"pagecrop_fold{fold}_stage{{curriculum/stage:.0f}}",
+        monitor="curriculum/stage",
+        mode="max",
+        save_top_k=num_cl_stages,
+        save_last=False,
+        verbose=True,
+        save_on_train_epoch_end=True,
     )
 
     # best_ckpt: starts disabled (save_top_k=0).
@@ -415,7 +429,7 @@ def train(
         # curriculum_cb MUST come before best_ckpt so that when curriculum_cb
         # flips best_ckpt.save_top_k=1 at the final stage, best_ckpt still runs
         # and saves the model for that same val epoch.
-        callbacks=[last_ckpt, curriculum_cb, best_ckpt, lr_monitor],
+        callbacks=[last_ckpt, curriculum_cb, stage_ckpt, best_ckpt, lr_monitor],
         max_epochs=epochs,
         precision="32" if cpu_test else "bf16-mixed",
         accelerator="cpu" if cpu_test else "auto",
