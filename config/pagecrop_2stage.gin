@@ -4,10 +4,10 @@
 # ─────────────────────────────────────────────
 
 # PATHS
-train_paths.data_path            = "data/jazzmus_pagecrop"
-train_paths.checkpoint           = "../ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
+train_paths.data_path            = "/home/hice1/jwang3180/scratch/Jazzmuss_Data/jazzmus_pagecrop"
+train_paths.checkpoint           = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
 train_paths.weights_dir          = "weights/pagecrop"
-train_paths.synthetic_data_path  = "data/jazzmus_synthetic"   # set to None to disable
+train_paths.synthetic_data_path  = None   # set to None to disable
 
 # DATASET
 PageCropDataset.fixed_img_height = None
@@ -18,7 +18,7 @@ PageCropDataset.dataset_length   = 3500
 
 # CURRICULUM
 DynamicCurriculumAdvancer.num_cl_stages  = 2
-DynamicCurriculumAdvancer.ser_threshold  = 0.10
+DynamicCurriculumAdvancer.ser_threshold  = 0.30
 DynamicCurriculumAdvancer.patience       = 3
 
 # MODEL
