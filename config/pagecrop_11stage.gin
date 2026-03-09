@@ -5,7 +5,7 @@
 
 # PATHS
 train_paths.data_path            = "/home/hice1/jwang3180/scratch/Jazzmuss_Data/jazzmus_pagecrop"
-train_paths.checkpoint           = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
+train_paths.checkpoint           = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
 train_paths.weights_dir          = "weights/pagecrop"
 train_paths.synthetic_data_path  = "/home/hice1/jwang3180/scratch/Jazzmuss_Data/jazzmus_synthetic"   # set to None to disable
 train_paths.resume               = "/home/hice1/jwang3180/FullPageJazzOMR/weights/pagecrop/last.ckpt"   # set to "weights/pagecrop/pagecrop_fold0_last-last.ckpt" to resume
@@ -34,7 +34,7 @@ SMT_Trainer.load_pretrained = False
 # TRAINING HYPERPARAMS
 train_hparams.lr                        = 5e-5
 train_hparams.accumulate_grad_batches   = 1
-train_hparams.batch_size                = 8
+train_hparams.batch_size                = 4
 train_hparams.val_batch_size            = 1
 train_hparams.num_workers               = 4
 train_hparams.check_val_every_n_epoch   = 10
