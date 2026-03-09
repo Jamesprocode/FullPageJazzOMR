@@ -7,7 +7,7 @@
 train_paths.data_path            = "data/jazzmus_pagecrop"
 train_paths.checkpoint           = "../ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
 train_paths.weights_dir          = "weights/pagecrop"
-train_paths.synthetic_data_path  = "data/jazzmus_synthetic"   # set to None to disable
+train_paths.synthetic_data_path  = "/home/hice1/jwang3180/scratch/Jazzmuss_Data/jazzmus_synthetic"   # set to None to disable
 
 # DATASET
 PageCropDataset.fixed_img_height = None
