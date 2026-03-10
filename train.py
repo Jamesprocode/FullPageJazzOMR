@@ -153,18 +153,24 @@ class DynamicCurriculumAdvancer(Callback):
         current_stage = self._stage
         print(f"\n  ── Full-sweep validation (all {self.num_cl_stages} stages) ──")
 
+        from tqdm import tqdm
+
         pl_module.eval()
         sweep_results = {}
         try:
             with torch.no_grad():
-                for k in range(1, self.num_cl_stages + 1):
+                stage_bar = tqdm(range(1, self.num_cl_stages + 1),
+                                 desc="  Full sweep", unit="stage", leave=True)
+                for k in stage_bar:
                     self.val_set.set_stage_direct(k)
                     loader = DataLoader(
                         self.val_set, batch_size=1, shuffle=False, num_workers=0
                     )
                     pl_module.preds = []
                     pl_module.grtrs = []
-                    for batch in loader:
+                    sample_bar = tqdm(loader, desc=f"    stage {k}", unit="sample",
+                                      leave=False)
+                    for batch in sample_bar:
                         x, di, y, paths = batch
                         batch_on_device = (
                             x.to(device), di.to(device), y.to(device), paths
@@ -175,7 +181,7 @@ class DynamicCurriculumAdvancer(Callback):
                     _, ser, _ = compute_poliphony_metrics(preds, grtrs)
                     ser = min(ser, 100.0)
                     sweep_results[k] = ser
-                    print(f"    stage={k}  val/ser={ser:.2f}%  ({len(preds)} samples)")
+                    stage_bar.write(f"    stage={k}  val/ser={ser:.2f}%  ({len(preds)} samples)")
         finally:
             # Always restore original stage, preds/grtrs, and train mode
             self.val_set.set_stage_direct(current_stage)
