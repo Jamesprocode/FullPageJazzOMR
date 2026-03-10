@@ -140,6 +140,57 @@ class DynamicCurriculumAdvancer(Callback):
               f"(val/ser={val_ser:.4f} < {self.ser_threshold}) ──")
         print(f"  ── Best-val/ser checkpoint now active; early-stop patience={self.final_patience} ──")
 
+    def _run_full_sweep(self, trainer: L.Trainer, pl_module: L.LightningModule):
+        """Validate on ALL num_cl_stages val sets and log per-stage SER to WandB.
+
+        Called once at each stage advance (patience met) before moving to the next
+        stage.  Results are logged as val/sweep/ser_stageN.
+        Does not affect training state, Lightning metrics, or the main val/ser metric.
+        """
+        from jazzmus.dataset.eval_functions import compute_poliphony_metrics
+
+        device = pl_module.device
+        current_stage = self._stage
+        print(f"\n  ── Full-sweep validation (all {self.num_cl_stages} stages) ──")
+
+        pl_module.eval()
+        sweep_results = {}
+        try:
+            with torch.no_grad():
+                for k in range(1, self.num_cl_stages + 1):
+                    self.val_set.set_stage_direct(k)
+                    loader = DataLoader(
+                        self.val_set, batch_size=1, shuffle=False, num_workers=0
+                    )
+                    pl_module.preds = []
+                    pl_module.grtrs = []
+                    for batch in loader:
+                        x, di, y, paths = batch
+                        batch_on_device = (
+                            x.to(device), di.to(device), y.to(device), paths
+                        )
+                        pl_module.predict_output(batch_on_device)
+                    preds = pl_module.preds[:]
+                    grtrs = pl_module.grtrs[:]
+                    _, ser, _ = compute_poliphony_metrics(preds, grtrs)
+                    ser = min(ser, 100.0)
+                    sweep_results[k] = ser
+                    print(f"    stage={k}  val/ser={ser:.2f}%  ({len(preds)} samples)")
+        finally:
+            # Always restore original stage, preds/grtrs, and train mode
+            self.val_set.set_stage_direct(current_stage)
+            pl_module.preds = []
+            pl_module.grtrs = []
+            pl_module.train()
+
+        # Log all stages to WandB in one call
+        if trainer.logger is not None:
+            trainer.logger.experiment.log(
+                {f"val/sweep/ser_stage{k}": v for k, v in sweep_results.items()}
+                | {"trainer/global_step": trainer.global_step}
+            )
+        print(f"  ── Full-sweep done ──\n")
+
     def on_train_start(self, trainer: L.Trainer, pl_module: L.LightningModule):
         pl_module.set_stage(self._stage)
         pl_module.set_stage_calculator(lambda epoch: self._stage)
@@ -179,6 +230,9 @@ class DynamicCurriculumAdvancer(Callback):
               f"below={self._epochs_below}/{self.patience}")
 
         if self._epochs_below >= self.patience:
+            # Full validation sweep over all stages 1..current before advancing
+            self._run_full_sweep(trainer, pl_module)
+
             self._stage = min(self._stage + 1, self.num_cl_stages)
             self._epochs_below = 0
             self.train_set.set_stage_direct(self._stage)
