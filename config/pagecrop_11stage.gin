@@ -14,18 +14,19 @@ train_paths.resume_stage         = 7      # curriculum stage to restore when res
 # DATASET
 PageCropDataset.fixed_img_height = None
 PageCropDataset.system_height    = 256   # each system row = 256px; N-system crop → N*256 tall
-PageCropDataset.num_cl_stages    = 11
+PageCropDataset.num_cl_stages    = 9
+PageCropDataset.final_stage      = 9
 PageCropDataset.curriculum_start = 1
 PageCropDataset.dataset_length   = 3500
 
 # CURRICULUM
-DynamicCurriculumAdvancer.num_cl_stages  = 11
-DynamicCurriculumAdvancer.ser_threshold  = 25.0
+DynamicCurriculumAdvancer.num_cl_stages  = 9
+DynamicCurriculumAdvancer.ser_threshold  = 28.0
 DynamicCurriculumAdvancer.patience       = 3
-DynamicCurriculumAdvancer.final_patience = 15   # val epochs without improvement before early stop
+DynamicCurriculumAdvancer.final_patience = 10
 
 # FINAL STAGE
-final_stage_hparams.final_patience = 15
+final_stage_hparams.final_patience = 10
 
 # MODEL
 SMT_Trainer.warmup_steps   = 150

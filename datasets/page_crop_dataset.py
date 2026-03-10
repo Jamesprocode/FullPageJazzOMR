@@ -76,6 +76,7 @@ class PageCropDataset(Dataset):
         num_cl_stages=2,
         curriculum_start=1,
         dataset_length=3500,
+        final_stage=None,           # stage at which pages use their actual max crop
         synthetic_data_path=None,   # optional: add synthetic train samples
     ):
         super().__init__()
@@ -88,6 +89,7 @@ class PageCropDataset(Dataset):
         self.num_cl_stages = num_cl_stages
         self.curriculum_start = curriculum_start
         self.dataset_length = dataset_length
+        self.final_stage = final_stage  # None means never switch to max-crop mode
 
         self.epoch = 0
         # Shared tensor so DataLoader worker processes see stage updates without
@@ -215,7 +217,11 @@ class PageCropDataset(Dataset):
             eligible = []
             for i, (_, _, n) in enumerate(self.samples):
                 pmn = page_max_n.get(sample_pid[i], n)
-                target = min(stage_n, pmn)
+                # At final_stage+, each page uses its actual max crop (full page)
+                if self.final_stage is not None and stage_n >= self.final_stage:
+                    target = pmn
+                else:
+                    target = min(stage_n, pmn)
                 # 1-system-only pages only appear at stage 1
                 if n == target and (pmn >= 2 or stage_n == 1):
                     eligible.append(i)
