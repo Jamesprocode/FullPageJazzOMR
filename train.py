@@ -404,12 +404,14 @@ def train(
         final_patience=final_patience,
     )
 
+    print(f"\n  resume={resume}  resume_stage={resume_stage}")
     if resume is not None:
         # Restore curriculum stage (callback state is not saved in the checkpoint)
         curriculum_cb._stage = resume_stage
         train_set.set_stage_direct(resume_stage)
         val_set.set_stage_direct(resume_stage)
-        print(f"\nResuming from: {resume}  (curriculum stage={resume_stage})")
+        print(f"  train _shared_stage={int(train_set._shared_stage[0])}  val _shared_stage={int(val_set._shared_stage[0])}")
+        print(f"  Resuming from: {resume}  (curriculum stage={resume_stage})")
 
     lr_monitor = LearningRateMonitor(logging_interval="step")
 
