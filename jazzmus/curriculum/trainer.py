@@ -190,6 +190,11 @@ class CurriculumSMTTrainer(SMT_Trainer):
                  on_epoch=True, prog_bar=False)
 
     def on_validation_epoch_end(self):
+        # Guard: Lightning 2.x can call this hook twice (before and after callbacks),
+        # the second time with empty preds/grtrs after super() already cleared them.
+        if not self.preds:
+            return
+
         # Chord metrics must be computed before super() clears self.preds / self.grtrs
         self._log_chord_metrics(self.preds, self.grtrs, step="val")
 
