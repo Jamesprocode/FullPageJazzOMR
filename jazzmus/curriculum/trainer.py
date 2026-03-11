@@ -198,30 +198,21 @@ class CurriculumSMTTrainer(SMT_Trainer):
         # Chord metrics must be computed before super() clears self.preds / self.grtrs
         self._log_chord_metrics(self.preds, self.grtrs, step="val")
 
-        # Log val input image and prediction table for the first val sample
+        # Log val prediction sample for the first val batch
         if self._val_sample is not None and self.preds:
             stage = int(self._stage_calculator(self.current_epoch))
-
-            # Standalone input image — visible in WandB media panel per stage
-            self.logger.experiment.log({
-                "curriculum/val_input": wandb.Image(
-                    self._val_sample["x"],
-                    caption=f"stage={stage}  epoch={self.current_epoch}  "
-                            f"path={self._val_sample['path']}",
-                ),
-            })
-
-            # Prediction table — shows input + prediction + GT side by side
-            table = wandb.Table(columns=["Image", "Path", "Stage", "Prediction", "Ground Truth"])
-            table.add_data(
-                wandb.Image(self._val_sample["x"],
-                            caption=f"stage={stage}  epoch={self.current_epoch}"),
-                self._val_sample["path"],
-                stage,
-                self.preds[0],
-                self.grtrs[0],
-            )
-            self.logger.experiment.log({"val/prediction_sample": table})
+            try:
+                table = wandb.Table(columns=["Image", "Stage", "Prediction", "Ground Truth"])
+                table.add_data(
+                    wandb.Image(self._val_sample["x"],
+                                caption=f"stage={stage}  epoch={self.current_epoch}"),
+                    stage,
+                    self.preds[0],
+                    self.grtrs[0],
+                )
+                self.logger.experiment.log({"val/prediction_sample": table})
+            except Exception as e:
+                print(f"  [WandB] Failed to log val sample (skipping): {e}")
             self._val_sample = None
 
         super().on_validation_epoch_end()
