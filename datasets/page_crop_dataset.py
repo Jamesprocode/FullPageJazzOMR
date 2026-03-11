@@ -214,6 +214,8 @@ class PageCropDataset(Dataset):
         for img_path, _, _ in self.samples:
             m = _re.search(r"(.*/)img_(\d+)_n", img_path)
             sample_pid.append((m.group(1), int(m.group(2))) if m else (-1, -1))
+        self._page_max_n = page_max_n
+        self._sample_pid = sample_pid
 
         max_n = max(n for _, _, n in self.samples)
         self._eligible_for = {}
@@ -345,6 +347,18 @@ class PageCropDataset(Dataset):
             n_maxed   = self._maxedout_counts.get(clamped, 0)
             print(f"  [Dataset/{self.split}] stage={stage}  eligible={len(self._cached_eligible)}"
                   f"  (real={n_real_el}, synthetic={n_syn_el}, maxed-out={n_maxed})")
+            # Integrity check: every sample must have n == stage (strict) or n == page_max_n (maxed-out)
+            bad = []
+            for i in self._cached_eligible:
+                _, _, n = self.samples[i]
+                pmn = self._page_max_n.get(self._sample_pid[i], n)
+                expected = pmn if (self.final_stage is not None and clamped >= self.final_stage) else min(clamped, pmn)
+                if n != expected:
+                    bad.append((i, n, expected, pmn))
+            if bad:
+                print(f"  WARNING [{self.split}] stage={stage}: {len(bad)} samples with wrong n:")
+                for idx, n_got, n_exp, pmn in bad:
+                    print(f"    sample {idx}  path={self.samples[idx][0]}  n={n_got}  expected={n_exp}  page_max_n={pmn}")
         return self._cached_eligible
 
     def __len__(self) -> int:
