@@ -201,18 +201,14 @@ class CurriculumSMTTrainer(SMT_Trainer):
         # Log val prediction sample for the first val batch
         if self._val_sample is not None and self.preds:
             stage = int(self._stage_calculator(self.current_epoch))
-            try:
-                table = wandb.Table(columns=["Image", "Stage", "Prediction", "Ground Truth"])
-                table.add_data(
-                    wandb.Image(self._val_sample["x"],
-                                caption=f"stage={stage}  epoch={self.current_epoch}"),
-                    stage,
-                    self.preds[0],
-                    self.grtrs[0],
+            self.logger.experiment.log({
+                "val/prediction_sample": wandb.Html(
+                    f"<b>Stage:</b> {stage}  <b>Epoch:</b> {self.current_epoch}<br>"
+                    f"<b>Path:</b> {self._val_sample['path']}<br><br>"
+                    f"<b>Prediction:</b><pre>{self.preds[0]}</pre>"
+                    f"<b>Ground Truth:</b><pre>{self.grtrs[0]}</pre>"
                 )
-                self.logger.experiment.log({"val/prediction_sample": table})
-            except Exception as e:
-                print(f"  [WandB] Failed to log val sample (skipping): {e}")
+            })
             self._val_sample = None
 
         super().on_validation_epoch_end()
