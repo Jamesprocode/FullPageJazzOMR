@@ -1,6 +1,7 @@
-# ── Page-crop 11-stage curriculum (full training) ─────────────────────────────
-# Curriculum advances stage 1 → 11 dynamically when val/ser < ser_threshold
+# ── Page-crop 9-stage curriculum (full training) ──────────────────────────────
+# Curriculum advances stage 1 → 9 dynamically when val/ser < ser_threshold
 # for `patience` consecutive validation epochs.
+# Stage 9 is the final stage: all pages use their actual max crop (full page).
 # ─────────────────────────────────────────────
 
 # PATHS
@@ -8,8 +9,8 @@ train_paths.data_path            = "/home/hice1/jwang3180/scratch/Jazzmuss_Data/
 train_paths.checkpoint           = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
 train_paths.weights_dir          = "weights/pagecrop"
 train_paths.synthetic_data_path  = "/home/hice1/jwang3180/scratch/Jazzmuss_Data/jazzmus_synthetic"   # set to None to disable
-train_paths.resume               = "/home/hice1/jwang3180/FullPageJazzOMR/weights/pagecrop/pagecrop_fold0_stage7.ckpt"   # set to "weights/pagecrop/pagecrop_fold0_last-last.ckpt" to resume
-train_paths.resume_stage         = 8      # curriculum stage to restore when resuming
+train_paths.resume               = None   # set to checkpoint path to resume
+train_paths.resume_stage         = 1      # curriculum stage to restore when resuming
 
 # DATASET
 PageCropDataset.fixed_img_height = None
