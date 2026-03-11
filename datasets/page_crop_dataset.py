@@ -345,8 +345,10 @@ class PageCropDataset(Dataset):
             n_real_el = sum(1 for i in self._cached_eligible if not self._is_synthetic[i])
             n_syn_el  = sum(1 for i in self._cached_eligible if self._is_synthetic[i])
             n_maxed   = self._maxedout_counts.get(clamped, 0)
+            from collections import Counter
+            n_dist = dict(sorted(Counter(self.samples[i][2] for i in self._cached_eligible).items()))
             print(f"  [Dataset/{self.split}] stage={stage}  eligible={len(self._cached_eligible)}"
-                  f"  (real={n_real_el}, synthetic={n_syn_el}, maxed-out={n_maxed})")
+                  f"  (real={n_real_el}, synthetic={n_syn_el}, maxed-out={n_maxed})  n_dist={n_dist}")
             # Integrity check: every sample must have n == stage (strict) or n == page_max_n (maxed-out)
             bad = []
             for i in self._cached_eligible:
@@ -359,6 +361,18 @@ class PageCropDataset(Dataset):
                 print(f"  WARNING [{self.split}] stage={stage}: {len(bad)} samples with wrong n:")
                 for idx, n_got, n_exp, pmn in bad:
                     print(f"    sample {idx}  path={self.samples[idx][0]}  n={n_got}  expected={n_exp}  page_max_n={pmn}")
+            # Val-specific check: warn on any sample that isn't at stage N and isn't maxed-out
+            if self.split == "val":
+                wrong_val = [
+                    (i, self.samples[i][2], self._page_max_n.get(self._sample_pid[i], self.samples[i][2]))
+                    for i in self._cached_eligible
+                    if self.samples[i][2] != clamped
+                    and self.samples[i][2] != self._page_max_n.get(self._sample_pid[i], self.samples[i][2])
+                ]
+                if wrong_val:
+                    print(f"  WARNING [val] stage={stage}: {len(wrong_val)} val samples have wrong system count (not stage-N and not maxed-out):")
+                    for idx, n_got, pmn in wrong_val:
+                        print(f"    {self.samples[idx][0]}  systems={n_got}  stage={clamped}  page_max={pmn}")
         return self._cached_eligible
 
     def __len__(self) -> int:
