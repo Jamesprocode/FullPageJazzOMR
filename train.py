@@ -124,6 +124,7 @@ class DynamicCurriculumAdvancer(Callback):
         self._stage         = 1
         self._epochs_below  = 0
         self._stage_best_ser = float("inf")   # best val/ser seen in current stage
+        self._stage_best_ckpt = None          # path to best-within-stage checkpoint
         self._at_final      = False
         self._best_ser      = float("inf")
         self._no_improve    = 0
@@ -233,6 +234,11 @@ class DynamicCurriculumAdvancer(Callback):
             if val_ser < self._stage_best_ser:
                 self._stage_best_ser = val_ser
                 self._epochs_below = 0   # still improving — reset
+                # Save best-within-stage checkpoint (overwrite on each new best)
+                self._stage_best_ckpt = str(
+                    Path(self.weights_dir) / f"pagecrop_fold{self.fold}_stage{self._stage}_best.ckpt"
+                )
+                trainer.save_checkpoint(self._stage_best_ckpt)
             else:
                 self._epochs_below += 1  # below threshold but plateaued
         else:
@@ -243,20 +249,28 @@ class DynamicCurriculumAdvancer(Callback):
               f"best={self._stage_best_ser:.2f}  below={self._epochs_below}/{self.patience}")
 
         if self._epochs_below >= self.patience:
+            # Restore best-within-stage weights, save as stage checkpoint, delete temp best file
+            stage_path = (Path(self.weights_dir)
+                          / f"pagecrop_fold{self.fold}_stage{self._stage}.ckpt")
+            if self._stage_best_ckpt and Path(self._stage_best_ckpt).exists():
+                ckpt = torch.load(self._stage_best_ckpt, map_location=pl_module.device)
+                pl_module.load_state_dict(ckpt["state_dict"])
+                trainer.save_checkpoint(str(stage_path))
+                Path(self._stage_best_ckpt).unlink()
+            else:
+                trainer.save_checkpoint(str(stage_path))
+            print(f"  ── Stage {self._stage} checkpoint saved: {stage_path.name} "
+                  f"(best val/ser={self._stage_best_ser:.2f}) ──")
+
             # Full validation sweep over all stages 1..current before advancing
             self._run_full_sweep(trainer, pl_module)
 
             self._stage = min(self._stage + 1, self.num_cl_stages)
             self._epochs_below = 0
             self._stage_best_ser = float("inf")
+            self._stage_best_ckpt = None
             self.train_set.set_stage_direct(self._stage)
             self.val_set.set_stage_direct(self._stage)
-
-            # Save one checkpoint per stage advance
-            stage_path = (Path(self.weights_dir)
-                          / f"pagecrop_fold{self.fold}_stage{self._stage - 1}.ckpt")
-            trainer.save_checkpoint(str(stage_path))
-            print(f"  ── Stage checkpoint saved: {stage_path.name} ──")
 
             if self._stage >= self.num_cl_stages:
                 self._activate_final_stage(trainer, pl_module, val_ser)
