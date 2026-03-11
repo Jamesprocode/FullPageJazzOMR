@@ -125,7 +125,6 @@ class DynamicCurriculumAdvancer(Callback):
         self._epochs_below    = 0
         self._stage_best_ser  = float("inf")   # best val/ser seen in current stage
         self._stage_best_ckpt = None           # path to best-within-stage checkpoint
-        self._skip_first_val  = False          # True after stage advance; skip inherited-weight val
         self._at_final        = False
         self._best_ser        = float("inf")
         self._no_improve      = 0
@@ -210,6 +209,7 @@ class DynamicCurriculumAdvancer(Callback):
         pl_module.set_stage_calculator(lambda epoch: self._stage)
 
     def on_validation_epoch_start(self, trainer: L.Trainer, pl_module: L.LightningModule):
+        self.val_set.set_stage_direct(self._stage)   # re-assert so persistent workers see current stage
         print(f"  [Val] epoch={trainer.current_epoch}  stage={self._stage}  "
               f"val_set_size={len(self.val_set)}")
 
@@ -231,13 +231,6 @@ class DynamicCurriculumAdvancer(Callback):
                 if self._no_improve >= self.final_patience:
                     print(f"  ── Early stopping triggered at final stage ──")
                     trainer.should_stop = True
-            return
-
-        # ── skip first val after stage advance (model still has inherited weights) ──
-        if self._skip_first_val:
-            self._skip_first_val = False
-            print(f"  [Curriculum] stage={self._stage}/{self.num_cl_stages}  "
-                  f"val/ser={val_ser:.2f}  (skipped — inherited weights, no patience counted)")
             return
 
         # ── pre-final: check whether to advance stage ─────────────────────────
@@ -282,12 +275,10 @@ class DynamicCurriculumAdvancer(Callback):
             self._epochs_below = 0
             self._stage_best_ser = float("inf")
             self._stage_best_ckpt = None
-            self._skip_first_val  = True   # next val uses inherited weights — skip it
             self.train_set.set_stage_direct(self._stage)
             self.val_set.set_stage_direct(self._stage)
 
             if self._stage >= self.num_cl_stages:
-                self._skip_first_val = False   # final stage: no skip, start tracking immediately
                 self._activate_final_stage(trainer, pl_module, val_ser)
             else:
                 pl_module.set_stage(self._stage)
