@@ -61,7 +61,6 @@ class PageCropDataset(Dataset):
         increase_epochs:  epochs per curriculum stage
         num_cl_stages:    total number of curriculum stages
         curriculum_start: N value at stage 1 (always 1)
-        dataset_length:   virtual dataset size (number of __getitem__ calls per epoch)
     """
 
     def __init__(
@@ -75,7 +74,6 @@ class PageCropDataset(Dataset):
         increase_epochs=50,
         num_cl_stages=2,
         curriculum_start=1,
-        dataset_length=3500,
         final_stage=None,           # stage at which pages use their actual max crop
         synthetic_data_path=None,   # optional: add synthetic train samples
     ):
@@ -88,7 +86,6 @@ class PageCropDataset(Dataset):
         self.increase_epochs = increase_epochs
         self.num_cl_stages = num_cl_stages
         self.curriculum_start = curriculum_start
-        self.dataset_length = dataset_length
         self.final_stage = final_stage  # None means never switch to max-crop mode
 
         self.epoch = 0
@@ -129,6 +126,8 @@ class PageCropDataset(Dataset):
                     gt_path = path_base / raw_gt
                 self.samples.append((str(img_path), str(gt_path), n))
 
+        n_real = len(self.samples)
+
         # ── optionally load synthetic samples (train only) ────────────────────
         if synthetic_data_path is not None and split == "train":
             syn_path = Path(synthetic_data_path)
@@ -154,8 +153,10 @@ class PageCropDataset(Dataset):
             else:
                 print(f"  Warning: synthetic split not found: {syn_file}")
 
+        n_syn_loaded = len(self.samples) - n_real
         print(f"PageCropDataset [{split}_{fold}]: {len(self.samples)} samples "
-              f"(N={sorted(set(n for _,_,n in self.samples))})")
+              f"(real={n_real}, synthetic={n_syn_loaded}, "
+              f"N={sorted(set(n for _,_,n in self.samples))})")
 
         # ── pre-load and tokenize GT ─────────────────────────────────────────
         # GT files contain raw kern with !!linebreak:original between systems.
@@ -215,8 +216,10 @@ class PageCropDataset(Dataset):
 
         max_n = max(n for _, _, n in self.samples)
         self._eligible_for = {}
+        maxedout_counts = {}
         for stage_n in range(1, max_n + 1):
             eligible = []
+            n_maxed = 0
             for i, (_, _, n) in enumerate(self.samples):
                 pmn = page_max_n.get(sample_pid[i], n)
                 # At final_stage+, each page uses its actual max crop (full page)
@@ -226,10 +229,20 @@ class PageCropDataset(Dataset):
                     target = min(stage_n, pmn)
                 if n == target:
                     eligible.append(i)
+                    if target < stage_n:   # page contributed max crop, not stage crop
+                        n_maxed += 1
             self._eligible_for[stage_n] = eligible
+            maxedout_counts[stage_n] = n_maxed
 
         # Eligible count is the same at every stage (all pages have max_n >= 2).
         self._n_pages = len(self._eligible_for[self.curriculum_start])
+        print(f"  [{split}_{fold}] pages per stage (total / maxed-out):")
+        for k in sorted(self._eligible_for.keys()):
+            total = len(self._eligible_for[k])
+            maxed = maxedout_counts[k]
+            print(f"    stage {k:2d}: {total:4d} pages  ({maxed} maxed-out)")
+        if len(set(len(v) for v in self._eligible_for.values())) > 1:
+            print(f"  WARNING: eligible count varies — possible page ID collision")
 
     # ── curriculum stage API ─────────────────────────────────────────────────
 
