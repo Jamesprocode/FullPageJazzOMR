@@ -158,6 +158,7 @@ class DynamicCurriculumAdvancer(Callback):
         from tqdm import tqdm
 
         pl_module.eval()
+        original_maxlen = pl_module.model.maxlen
         sweep_results = {}
         try:
             with torch.no_grad():
@@ -165,8 +166,11 @@ class DynamicCurriculumAdvancer(Callback):
                                  desc="  Full sweep", unit="stage", leave=True)
                 for k in stage_bar:
                     self.val_set.set_stage_direct(k)
+                    capped_maxlen = min(original_maxlen, max(512, k * 550))
+                    pl_module.model.maxlen = capped_maxlen
                     loader = DataLoader(
-                        self.val_set, batch_size=1, shuffle=False, num_workers=0
+                        self.val_set, batch_size=1, shuffle=False, num_workers=0,
+                        collate_fn=batch_preparation_img2seq,
                     )
                     pl_module.preds = []
                     pl_module.grtrs = []
@@ -185,8 +189,9 @@ class DynamicCurriculumAdvancer(Callback):
                     sweep_results[k] = ser
                     stage_bar.write(f"    stage={k}  val/ser={ser:.2f}%  ({len(preds)} samples)")
         finally:
-            # Always restore original stage, preds/grtrs, and train mode
+            # Always restore original stage, maxlen, preds/grtrs, and train mode
             self.val_set.set_stage_direct(current_stage)
+            pl_module.model.maxlen = original_maxlen
             pl_module.preds = []
             pl_module.grtrs = []
             pl_module.train()
