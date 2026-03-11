@@ -123,6 +123,7 @@ class DynamicCurriculumAdvancer(Callback):
         self.final_patience = final_patience
         self._stage         = 1
         self._epochs_below  = 0
+        self._stage_best_ser = float("inf")   # best val/ser seen in current stage
         self._at_final      = False
         self._best_ser      = float("inf")
         self._no_improve    = 0
@@ -226,14 +227,20 @@ class DynamicCurriculumAdvancer(Callback):
             return
 
         # ── pre-final: check whether to advance stage ─────────────────────────
+        # Increment patience counter only when below threshold AND no longer improving.
+        # If val/ser is still dropping, reset counter — keep training.
         if val_ser < self.ser_threshold:
-            self._epochs_below += 1
+            if val_ser < self._stage_best_ser:
+                self._stage_best_ser = val_ser
+                self._epochs_below = 0   # still improving — reset
+            else:
+                self._epochs_below += 1  # below threshold but plateaued
         else:
             self._epochs_below = 0
 
         print(f"  [Curriculum] stage={self._stage}/{self.num_cl_stages}  "
               f"val/ser={val_ser:.2f}  threshold={self.ser_threshold:.2f}  "
-              f"below={self._epochs_below}/{self.patience}")
+              f"best={self._stage_best_ser:.2f}  below={self._epochs_below}/{self.patience}")
 
         if self._epochs_below >= self.patience:
             # Full validation sweep over all stages 1..current before advancing
@@ -241,6 +248,7 @@ class DynamicCurriculumAdvancer(Callback):
 
             self._stage = min(self._stage + 1, self.num_cl_stages)
             self._epochs_below = 0
+            self._stage_best_ser = float("inf")
             self.train_set.set_stage_direct(self._stage)
             self.val_set.set_stage_direct(self._stage)
 
