@@ -22,7 +22,7 @@ PageCropDataset.curriculum_start = 1
 # CURRICULUM
 DynamicCurriculumAdvancer.num_cl_stages  = 9
 DynamicCurriculumAdvancer.ser_threshold  = 28.0
-DynamicCurriculumAdvancer.patience       = 3
+DynamicCurriculumAdvancer.patience       = 5
 DynamicCurriculumAdvancer.final_patience = 10
 
 # FINAL STAGE
