@@ -188,6 +188,7 @@ class DynamicCurriculumAdvancer(Callback):
                     ser = min(ser, 100.0)
                     sweep_results[k] = ser
                     stage_bar.write(f"    stage={k}  val/ser={ser:.2f}%  ({len(preds)} samples)")
+                    print(f"    stage={k}  val/ser={ser:.2f}%  ({len(preds)} samples)")
         finally:
             # Always restore original stage, maxlen, preds/grtrs, and train mode
             self.val_set.set_stage_direct(current_stage)
