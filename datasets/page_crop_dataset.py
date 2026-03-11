@@ -154,6 +154,7 @@ class PageCropDataset(Dataset):
                 print(f"  Warning: synthetic split not found: {syn_file}")
 
         n_syn_loaded = len(self.samples) - n_real
+        self._is_synthetic = [False] * n_real + [True] * n_syn_loaded
         print(f"PageCropDataset [{split}_{fold}]: {len(self.samples)} samples "
               f"(real={n_real}, synthetic={n_syn_loaded}, "
               f"N={sorted(set(n for _,_,n in self.samples))})")
@@ -236,11 +237,7 @@ class PageCropDataset(Dataset):
 
         # Eligible count is the same at every stage (all pages have max_n >= 2).
         self._n_pages = len(self._eligible_for[self.curriculum_start])
-        print(f"  [{split}_{fold}] pages per stage (total / maxed-out):")
-        for k in sorted(self._eligible_for.keys()):
-            total = len(self._eligible_for[k])
-            maxed = maxedout_counts[k]
-            print(f"    stage {k:2d}: {total:4d} pages  ({maxed} maxed-out)")
+        self._maxedout_counts = maxedout_counts
         if len(set(len(v) for v in self._eligible_for.values())) > 1:
             print(f"  WARNING: eligible count varies — possible page ID collision")
 
@@ -343,7 +340,11 @@ class PageCropDataset(Dataset):
             clamped = min(stage, max_n)
             self._cached_eligible = self._eligible_for.get(clamped, self._eligible_for[max_n])
             self._cached_stage = stage
-            print(f"  [Dataset/{self.split}] stage={stage}  eligible={len(self._cached_eligible)} samples")
+            n_real_el = sum(1 for i in self._cached_eligible if not self._is_synthetic[i])
+            n_syn_el  = sum(1 for i in self._cached_eligible if self._is_synthetic[i])
+            n_maxed   = self._maxedout_counts.get(clamped, 0)
+            print(f"  [Dataset/{self.split}] stage={stage}  eligible={len(self._cached_eligible)}"
+                  f"  (real={n_real_el}, synthetic={n_syn_el}, maxed-out={n_maxed})")
         return self._cached_eligible
 
     def __len__(self) -> int:
