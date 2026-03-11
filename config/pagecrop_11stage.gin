@@ -18,7 +18,6 @@ PageCropDataset.system_height    = 256   # each system row = 256px; N-system cro
 PageCropDataset.num_cl_stages    = 9
 PageCropDataset.final_stage      = 9
 PageCropDataset.curriculum_start = 1
-PageCropDataset.dataset_length   = 3500
 
 # CURRICULUM
 DynamicCurriculumAdvancer.num_cl_stages  = 9
