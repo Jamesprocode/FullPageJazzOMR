@@ -121,13 +121,14 @@ class DynamicCurriculumAdvancer(Callback):
         self.ser_threshold  = ser_threshold
         self.patience       = patience
         self.final_patience = final_patience
-        self._stage         = 1
-        self._epochs_below  = 0
-        self._stage_best_ser = float("inf")   # best val/ser seen in current stage
-        self._stage_best_ckpt = None          # path to best-within-stage checkpoint
-        self._at_final      = False
-        self._best_ser      = float("inf")
-        self._no_improve    = 0
+        self._stage           = 1
+        self._epochs_below    = 0
+        self._stage_best_ser  = float("inf")   # best val/ser seen in current stage
+        self._stage_best_ckpt = None           # path to best-within-stage checkpoint
+        self._skip_first_val  = False          # True after stage advance; skip inherited-weight val
+        self._at_final        = False
+        self._best_ser        = float("inf")
+        self._no_improve      = 0
 
         train_set.set_stage_direct(1)
         val_set.set_stage_direct(1)
@@ -232,6 +233,13 @@ class DynamicCurriculumAdvancer(Callback):
                     trainer.should_stop = True
             return
 
+        # ── skip first val after stage advance (model still has inherited weights) ──
+        if self._skip_first_val:
+            self._skip_first_val = False
+            print(f"  [Curriculum] stage={self._stage}/{self.num_cl_stages}  "
+                  f"val/ser={val_ser:.2f}  (skipped — inherited weights, no patience counted)")
+            return
+
         # ── pre-final: check whether to advance stage ─────────────────────────
         # Increment patience counter only when below threshold AND no longer improving.
         # If val/ser is still dropping, reset counter — keep training.
@@ -254,19 +262,18 @@ class DynamicCurriculumAdvancer(Callback):
               f"best={self._stage_best_ser:.2f}  below={self._epochs_below}/{self.patience}")
 
         if self._epochs_below >= self.patience:
-            # Save current weights as the stage checkpoint.
-            # We intentionally do NOT restore to the best-within-stage checkpoint here:
-            # the best is often the inherited performance from the previous stage (set
-            # on the very first val before any stage-N training), and restoring it would
-            # discard all stage-N training.  Current weights always reflect actual
-            # stage-N training.  The best SER is logged for monitoring only.
+            # Restore best-within-stage weights, save as stage checkpoint, delete temp best file
             stage_path = (Path(self.weights_dir)
                           / f"pagecrop_fold{self.fold}_stage{self._stage}.ckpt")
-            trainer.save_checkpoint(str(stage_path))
             if self._stage_best_ckpt and Path(self._stage_best_ckpt).exists():
+                ckpt = torch.load(self._stage_best_ckpt, map_location=pl_module.device)
+                pl_module.load_state_dict(ckpt["state_dict"])
+                trainer.save_checkpoint(str(stage_path))
                 Path(self._stage_best_ckpt).unlink()
+            else:
+                trainer.save_checkpoint(str(stage_path))
             print(f"  ── Stage {self._stage} checkpoint saved: {stage_path.name} "
-                  f"(current weights; best monitored={self._stage_best_ser:.2f}) ──")
+                  f"(best val/ser={self._stage_best_ser:.2f}) ──")
 
             # Full validation sweep over all stages 1..current before advancing
             self._run_full_sweep(trainer, pl_module)
@@ -275,10 +282,12 @@ class DynamicCurriculumAdvancer(Callback):
             self._epochs_below = 0
             self._stage_best_ser = float("inf")
             self._stage_best_ckpt = None
+            self._skip_first_val  = True   # next val uses inherited weights — skip it
             self.train_set.set_stage_direct(self._stage)
             self.val_set.set_stage_direct(self._stage)
 
             if self._stage >= self.num_cl_stages:
+                self._skip_first_val = False   # final stage: no skip, start tracking immediately
                 self._activate_final_stage(trainer, pl_module, val_ser)
             else:
                 pl_module.set_stage(self._stage)
