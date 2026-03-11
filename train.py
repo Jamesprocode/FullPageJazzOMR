@@ -128,6 +128,7 @@ class DynamicCurriculumAdvancer(Callback):
         self._at_final        = False
         self._best_ser        = float("inf")
         self._no_improve      = 0
+        self._skip_next_val   = False   # skip best/ckpt update for first val after stage advance
 
         train_set.set_stage_direct(1)
         val_set.set_stage_direct(1)
@@ -237,6 +238,14 @@ class DynamicCurriculumAdvancer(Callback):
         # ── pre-final: check whether to advance stage ─────────────────────────
         # Increment patience counter only when below threshold AND no longer improving.
         # If val/ser is still dropping, reset counter — keep training.
+        if self._skip_next_val:
+            self._skip_next_val = False
+            print(f"  [Curriculum] stage={self._stage}/{self.num_cl_stages}  "
+                  f"val/ser={val_ser:.2f}  threshold={self.ser_threshold:.2f}  "
+                  f"best={self._stage_best_ser:.2f}  below={self._epochs_below}/{self.patience}  "
+                  f"[skipped — first val after stage advance]")
+            return
+
         if val_ser < self.ser_threshold:
             if val_ser < self._stage_best_ser:
                 self._stage_best_ser = val_ser
@@ -276,6 +285,7 @@ class DynamicCurriculumAdvancer(Callback):
             self._epochs_below = 0
             self._stage_best_ser = float("inf")
             self._stage_best_ckpt = None
+            self._skip_next_val = True   # ignore first val of new stage (may be stale data)
             self.train_set.set_stage_direct(self._stage)
             self.val_set.set_stage_direct(self._stage)
 
