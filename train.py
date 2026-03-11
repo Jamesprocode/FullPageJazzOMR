@@ -254,18 +254,19 @@ class DynamicCurriculumAdvancer(Callback):
               f"best={self._stage_best_ser:.2f}  below={self._epochs_below}/{self.patience}")
 
         if self._epochs_below >= self.patience:
-            # Restore best-within-stage weights, save as stage checkpoint, delete temp best file
+            # Save current weights as the stage checkpoint.
+            # We intentionally do NOT restore to the best-within-stage checkpoint here:
+            # the best is often the inherited performance from the previous stage (set
+            # on the very first val before any stage-N training), and restoring it would
+            # discard all stage-N training.  Current weights always reflect actual
+            # stage-N training.  The best SER is logged for monitoring only.
             stage_path = (Path(self.weights_dir)
                           / f"pagecrop_fold{self.fold}_stage{self._stage}.ckpt")
+            trainer.save_checkpoint(str(stage_path))
             if self._stage_best_ckpt and Path(self._stage_best_ckpt).exists():
-                ckpt = torch.load(self._stage_best_ckpt, map_location=pl_module.device)
-                pl_module.load_state_dict(ckpt["state_dict"])
-                trainer.save_checkpoint(str(stage_path))
                 Path(self._stage_best_ckpt).unlink()
-            else:
-                trainer.save_checkpoint(str(stage_path))
             print(f"  ── Stage {self._stage} checkpoint saved: {stage_path.name} "
-                  f"(best val/ser={self._stage_best_ser:.2f}) ──")
+                  f"(current weights; best monitored={self._stage_best_ser:.2f}) ──")
 
             # Full validation sweep over all stages 1..current before advancing
             self._run_full_sweep(trainer, pl_module)
