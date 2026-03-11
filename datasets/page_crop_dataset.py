@@ -9,8 +9,8 @@ Curriculum stage is determined from the current epoch:
                 curriculum_start + num_cl_stages - 1)
 
 Only samples with N <= stage are eligible for sampling.  __len__ returns
-dataset_length regardless of eligibility so Lightning sees a fixed-size
-dataset per epoch; eligible samples are chosen randomly in __getitem__.
+the number of unique pages so Lightning sees a stable epoch size.
+__getitem__ picks the correct stage crop via index % len(eligible).
 
 Usage in train.py:
     train_set = PageCropDataset(data_path, split="train", fold=0)
@@ -199,17 +199,19 @@ class PageCropDataset(Dataset):
         #                   best available crop (they have "maxed out").
         #                   1-system-only pages never appear again after stage 1.
         import re as _re
+        # Page ID = (dataset_prefix, numeric_id) so real and synthetic pages
+        # with the same img number are not conflated (both start at img_0).
         page_max_n: dict = {}
         for img_path, _, n in self.samples:
-            m = _re.search(r"img_(\d+)_n", img_path)
+            m = _re.search(r"(.*/)img_(\d+)_n", img_path)
             if m:
-                pid = int(m.group(1))
+                pid = (m.group(1), int(m.group(2)))
                 page_max_n[pid] = max(page_max_n.get(pid, 0), n)
 
         sample_pid = []
         for img_path, _, _ in self.samples:
-            m = _re.search(r"img_(\d+)_n", img_path)
-            sample_pid.append(int(m.group(1)) if m else -1)
+            m = _re.search(r"(.*/)img_(\d+)_n", img_path)
+            sample_pid.append((m.group(1), int(m.group(2))) if m else (-1, -1))
 
         max_n = max(n for _, _, n in self.samples)
         self._eligible_for = {}
@@ -222,13 +224,11 @@ class PageCropDataset(Dataset):
                     target = pmn
                 else:
                     target = min(stage_n, pmn)
-                # 1-system-only pages only appear at stage 1
-                if n == target and (pmn >= 2 or stage_n == 1):
+                if n == target:
                     eligible.append(i)
             self._eligible_for[stage_n] = eligible
 
-        # Number of unique pages — constant across all stages (one sample per page).
-        # Used as __len__ so Lightning never sees 0 and skips validation.
+        # Eligible count is the same at every stage (all pages have max_n >= 2).
         self._n_pages = len(self._eligible_for[self.curriculum_start])
 
     # ── curriculum stage API ─────────────────────────────────────────────────
@@ -334,9 +334,6 @@ class PageCropDataset(Dataset):
         return self._cached_eligible
 
     def __len__(self) -> int:
-        # Always returns a fixed count (one sample per unique page) so Lightning
-        # never sees 0 and skips validation. __getitem__ picks the correct
-        # stage crop via index % len(eligible).
         if self.split == "test":
             return len(self.samples)
         return self._n_pages
@@ -348,10 +345,10 @@ class PageCropDataset(Dataset):
             # Iterate through all samples in order.
             idx = index
         else:
-            # Train + val: deterministic index into eligible set.
+            # Train + val: index into eligible set.
             # DataLoader shuffle=True randomises order for train.
             eligible = self._stage_eligible()
-            idx = eligible[index % len(eligible)]
+            idx = eligible[index % len(eligible)]  # % is a safety net only
 
         img_path, gt_path, n = self.samples[idx]
         tokens = self.gt_tokens[idx]
