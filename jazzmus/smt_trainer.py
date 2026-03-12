@@ -141,29 +141,32 @@ class SMT_Trainer(L.LightningModule):
         self.log("train/loss", loss, on_epoch=True, batch_size=x.shape[0], prog_bar=True)
 
         if batch_idx == 0:
-            # Create a wandb Table to log images with their paths
-            table = wandb.Table(columns=["image", "path"])
+            try:
+                # Create a wandb Table to log images with their paths
+                table = wandb.Table(columns=["image", "path"])
 
-            for i in range(x.shape[0]):
-                image_tensor = x[i].squeeze().cpu()
-                image_np = image_tensor.numpy()
+                for i in range(x.shape[0]):
+                    image_tensor = x[i].squeeze().cpu()
+                    image_np = image_tensor.numpy()
 
-                # Add image and its corresponding path to the table
-                table.add_data(
-                    wandb.Image(image_np),
-                    path_to_images[i]
-                )
+                    # Add image and its corresponding path to the table
+                    table.add_data(
+                        wandb.Image(image_np),
+                        path_to_images[i]
+                    )
 
-            # Log the table to wandb
-            self.logger.experiment.log({
-                f"Input batch - Epoch {self.current_epoch}": table
-            })
+                # Log the table to wandb
+                self.logger.experiment.log({
+                    f"Input batch - Epoch {self.current_epoch}": table
+                })
 
-            # log also an image of the batch of images vertically stacked
-            stacked_image = torch.cat([xx.squeeze().cpu() for xx in x], dim=0)
-            wandb.log({
-                f"Input batch image": wandb.Image(stacked_image.numpy())
-            })
+                # log also an image of the batch of images vertically stacked
+                stacked_image = torch.cat([xx.squeeze().cpu() for xx in x], dim=0)
+                wandb.log({
+                    f"Input batch image": wandb.Image(stacked_image.numpy())
+                })
+            except Exception as e:
+                print(f"  [WandB] Failed to log training batch (skipping): {e}")
 
         return loss
 
@@ -236,20 +239,23 @@ class SMT_Trainer(L.LightningModule):
         # print(f"\n[Prediction] - {predtoshow}")
         # print(f"\n[GT] - {gttoshow}")
 
-        # Create a wandb Table for predictions
-        table = wandb.Table(columns=["Prediction", "Ground Truth"])
-        table.add_data(predtoshow, gttoshow)
-        
-        # Log both table and text to wandb
-        self.logger.experiment.log({
-            f"val/predictions_table": table,
-            f"val/example_prediction": wandb.Html(f"""
-                <div style='white-space: pre-wrap;'>
-                <b>Prediction:</b>\n{predtoshow}\n\n
-                <b>Ground Truth:</b>\n{gttoshow}
-                </div>
-            """)
-        })
+        try:
+            # Create a wandb Table for predictions
+            table = wandb.Table(columns=["Prediction", "Ground Truth"])
+            table.add_data(predtoshow, gttoshow)
+
+            # Log both table and text to wandb
+            self.logger.experiment.log({
+                f"val/predictions_table": table,
+                f"val/example_prediction": wandb.Html(f"""
+                    <div style='white-space: pre-wrap;'>
+                    <b>Prediction:</b>\n{predtoshow}\n\n
+                    <b>Ground Truth:</b>\n{gttoshow}
+                    </div>
+                """)
+            })
+        except Exception as e:
+            print(f"  [WandB] Failed to log val predictions (skipping): {e}")
 
         self.preds = []
         self.grtrs = []
