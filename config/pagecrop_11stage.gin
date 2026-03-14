@@ -9,8 +9,8 @@ train_paths.data_path            = "/home/hice1/jwang3180/scratch/Jazzmuss_Data/
 train_paths.checkpoint           = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
 train_paths.weights_dir          = "weights/pagecrop"
 train_paths.synthetic_data_path  = "/home/hice1/jwang3180/scratch/Jazzmuss_Data/jazzmus_synthetic"   # set to None to disable
-train_paths.resume               = None   # set to checkpoint path to resume
-train_paths.resume_stage         = 1      # curriculum stage to restore when resuming
+train_paths.resume               = "/home/hice1/jwang3180/FullPageJazzOMR/weights/pagecrop/last.ckpt"   # set to checkpoint path to resume
+train_paths.resume_stage         = 9      # curriculum stage to restore when resuming
 
 # DATASET
 PageCropDataset.fixed_img_height = None
@@ -23,19 +23,16 @@ PageCropDataset.curriculum_start = 1
 DynamicCurriculumAdvancer.num_cl_stages  = 9
 DynamicCurriculumAdvancer.ser_threshold  = 28.0
 DynamicCurriculumAdvancer.patience       = 3
-DynamicCurriculumAdvancer.final_patience = 10
-
-# FINAL STAGE
-final_stage_hparams.final_patience = 10
+DynamicCurriculumAdvancer.final_patience = 5
 
 # MODEL
 SMT_Trainer.warmup_steps   = 150
 SMT_Trainer.load_pretrained = False
 
 # TRAINING HYPERPARAMS
-train_hparams.lr                        = 5e-5
+train_hparams.lr                        = 1e-5
 train_hparams.accumulate_grad_batches   = 1
-train_hparams.batch_size                = 8
+train_hparams.batch_size                = 4
 train_hparams.val_batch_size            = 1
 train_hparams.num_workers               = 4
 train_hparams.check_val_every_n_epoch   = 10
