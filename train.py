@@ -34,15 +34,6 @@ from lightning.pytorch.callbacks import (
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-# ── gin-configurable final-stage early-stop patience ───────────────────────────
-
-@gin.configurable
-def final_stage_hparams(
-    final_patience: int = 15,
-):
-    """Gin-configurable final-stage hyperparameters."""
-    return final_patience
-
 # Allow running from project root without installing the package
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -467,7 +458,7 @@ def train(
     )
 
     # ── callbacks ──────────────────────────────────────────────────────────────
-    final_patience = final_stage_hparams()
+    final_patience = gin.query_parameter("DynamicCurriculumAdvancer.final_patience")
     num_cl_stages  = gin.query_parameter("DynamicCurriculumAdvancer.num_cl_stages")
 
     # last_ckpt: always saves the most recent checkpoint (for training continuity).
@@ -511,6 +502,11 @@ def train(
         val_set.set_stage_direct(resume_stage)
         print(f"  train _shared_stage={int(train_set._shared_stage[0])}  val _shared_stage={int(val_set._shared_stage[0])}")
         print(f"  Resuming from: {resume}  (curriculum stage={resume_stage})")
+        if resume_stage >= curriculum_cb.num_cl_stages:
+            # Already at final stage — skip pre-final advancement logic entirely
+            curriculum_cb._at_final = True
+            best_ckpt.save_top_k = 1
+            print(f"  Resumed at final stage {resume_stage} — early-stop patience={curriculum_cb.final_patience}")
 
     lr_monitor = LearningRateMonitor(logging_interval="step")
 
