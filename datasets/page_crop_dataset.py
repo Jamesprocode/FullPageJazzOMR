@@ -76,6 +76,7 @@ class PageCropDataset(Dataset):
         curriculum_start=1,
         final_stage=None,           # stage at which pages use their actual max crop
         synthetic_data_path=None,   # optional: add synthetic train samples
+        replay_ratio=0.0,           # fraction of each previous stage to replay during train
     ):
         super().__init__()
         self.split = split
@@ -87,6 +88,7 @@ class PageCropDataset(Dataset):
         self.num_cl_stages = num_cl_stages
         self.curriculum_start = curriculum_start
         self.final_stage = final_stage  # None means never switch to max-crop mode
+        self.replay_ratio = replay_ratio
 
         self.epoch = 0
         # Shared tensor so DataLoader worker processes see stage updates without
@@ -338,17 +340,40 @@ class PageCropDataset(Dataset):
         """
         stage = self.get_stage(self.epoch)
         if stage != self._cached_stage:
+            from collections import Counter
             max_n = max(self._eligible_for.keys())
             clamped = min(stage, max_n)
-            self._cached_eligible = self._eligible_for.get(clamped, self._eligible_for[max_n])
+            current_eligible = list(self._eligible_for.get(clamped, self._eligible_for[max_n]))
+
+            # ── experience replay: add fraction of each previous stage (train only) ──
+            replay_counts = {}
+            if self.replay_ratio > 0.0 and clamped > 1 and self.split == "train":
+                replay_eligible = []
+                for s in range(1, clamped):
+                    prev = self._eligible_for.get(s, [])
+                    k = max(1, round(self.replay_ratio * len(prev)))
+                    sampled = random.sample(prev, min(k, len(prev)))
+                    replay_eligible.extend(sampled)
+                    replay_counts[s] = len(sampled)
+                combined = current_eligible + replay_eligible
+                random.shuffle(combined)   # distribute replay evenly so __len__ sampling sees correct ratio
+                self._cached_eligible = combined
+            else:
+                self._cached_eligible = current_eligible
+
             self._cached_stage = stage
-            n_real_el = sum(1 for i in self._cached_eligible if not self._is_synthetic[i])
-            n_syn_el  = sum(1 for i in self._cached_eligible if self._is_synthetic[i])
-            n_maxed   = self._maxedout_counts.get(clamped, 0)
-            from collections import Counter
             n_dist = dict(sorted(Counter(self.samples[i][2] for i in self._cached_eligible).items()))
-            print(f"  [Dataset/{self.split}] stage={stage}  eligible={len(self._cached_eligible)}"
-                  f"  (real={n_real_el}, synthetic={n_syn_el}, maxed-out={n_maxed})  n_dist={n_dist}")
+
+            if replay_counts:
+                print(f"  [Dataset/{self.split}] stage={stage}"
+                      f"  current={len(current_eligible)}  replay={replay_counts}"
+                      f"  total={len(self._cached_eligible)}  n_dist={n_dist}")
+            else:
+                n_real_el = sum(1 for i in self._cached_eligible if not self._is_synthetic[i])
+                n_syn_el  = sum(1 for i in self._cached_eligible if self._is_synthetic[i])
+                n_maxed   = self._maxedout_counts.get(clamped, 0)
+                print(f"  [Dataset/{self.split}] stage={stage}  eligible={len(self._cached_eligible)}"
+                      f"  (real={n_real_el}, synthetic={n_syn_el}, maxed-out={n_maxed})  n_dist={n_dist}")
             # Integrity check: every sample must have n == stage (strict) or n == page_max_n (maxed-out)
             bad = []
             for i in self._cached_eligible:

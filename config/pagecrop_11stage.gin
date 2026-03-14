@@ -18,6 +18,7 @@ PageCropDataset.system_height    = 256   # each system row = 256px; N-system cro
 PageCropDataset.num_cl_stages    = 9
 PageCropDataset.final_stage      = 9
 PageCropDataset.curriculum_start = 1
+PageCropDataset.replay_ratio     = 0.0   # add 10% of each previous stage to train pool
 
 # CURRICULUM
 DynamicCurriculumAdvancer.num_cl_stages  = 9
