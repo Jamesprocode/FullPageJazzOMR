@@ -161,4 +161,4 @@ def process_chord_pitch(root_string):
 
 def untokenize(tokens):
     """Untokenizes a list of tokens into a string."""
-    return "".join(tokens).replace("<t>", "\t").replace("<n>", "\n").replace("<s>", " ").replace("<chord-pitch>", "").replace("<chord-extension>", "")
+    return "".join(tokens).replace("<t>", "\t").replace("<n>", "\n").replace("<linebreak>", "!!linebreak:original\n").replace("<s>", " ").replace("<chord-pitch>", "").replace("<chord-extension>", "")

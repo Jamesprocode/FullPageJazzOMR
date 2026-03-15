@@ -17,12 +17,12 @@ import wandb
 from jazzmus.smt_trainer import SMT_Trainer
 
 try:
-    from chord_metrics import (
+    from jazzmus.dataset.chord_metrics import (
+        extract_spines,
         extract_tokens_from_mxhm,
         compute_page_chord_metrics,
         aggregate_page_chord_metrics,
     )
-    from inference import extract_spines
     _HAS_CHORD_METRICS = True
 except ImportError:
     _HAS_CHORD_METRICS = False

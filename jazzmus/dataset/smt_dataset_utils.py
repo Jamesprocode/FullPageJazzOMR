@@ -40,11 +40,11 @@ def check_and_retrieveVocabulary(YSequences, pathOfSequences, nameOfVoc):
     if not path.isdir(pathOfSequences):
         os.mkdir(pathOfSequences)
 
-    # if path.isfile(w2ipath):
-    #     w2i = np.load(w2ipath, allow_pickle=True).item()
-    #     i2w = np.load(i2wpath, allow_pickle=True).item()
-    # else:
-    w2i, i2w = make_vocabulary(YSequences, pathOfSequences, nameOfVoc)
+    if path.isfile(w2ipath):
+        w2i = np.load(w2ipath, allow_pickle=True).item()
+        i2w = np.load(i2wpath, allow_pickle=True).item()
+    else:
+        w2i, i2w = make_vocabulary(YSequences, pathOfSequences, nameOfVoc)
 
     return w2i, i2w
 
