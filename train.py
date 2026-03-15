@@ -66,9 +66,10 @@ def train_paths(
     synthetic_data_path:  str = None,   # e.g. "data/jazzmus_synthetic"
     resume:               str = None,   # path to last.ckpt to resume training
     resume_stage:         int = 1,      # curriculum stage to restore when resuming
+    wandb_name:           str = None,   # custom wandb run name (default: pagecrop_fold{fold}_lr{lr})
 ):
     """Gin-configurable paths. CLI args override gin values."""
-    return data_path, checkpoint, weights_dir, synthetic_data_path, resume, resume_stage
+    return data_path, checkpoint, weights_dir, synthetic_data_path, resume, resume_stage, wandb_name
 
 
 # ── dynamic curriculum callback ────────────────────────────────────────────────
@@ -223,6 +224,7 @@ class DynamicCurriculumAdvancer(Callback):
                       f"val epochs (best val/ser={self._best_ser:.4f})")
                 if self._no_improve >= self.final_patience:
                     print(f"  ── Early stopping triggered at final stage ──")
+                    self._run_full_sweep(trainer, pl_module)
                     trainer.should_stop = True
             return
 
@@ -315,7 +317,7 @@ def train(
 
     # Resolve all params: gin config is the default, CLI arg overrides
     gin_lr, gin_accum, gin_bs, gin_val_bs, gin_nw, gin_val_freq          = train_hparams()
-    gin_data, gin_ckpt, gin_wts, gin_synthetic, gin_resume, gin_resume_s = train_paths()
+    gin_data, gin_ckpt, gin_wts, gin_synthetic, gin_resume, gin_resume_s, gin_wandb_name = train_paths()
     if lr is None:
         lr = gin_lr
     if accumulate_grad_batches is None:
@@ -513,7 +515,7 @@ def train(
     # ── logger ─────────────────────────────────────────────────────────────────
     wandb_logger = WandbLogger(
         project="fullpage-jazz-omr",
-        name=f"pagecrop_fold{fold}_lr{lr}",
+        name=gin_wandb_name or f"pagecrop_fold{fold}_lr{lr}",
         group="pagecrop_curriculum",
         log_model=False,
         save_dir="logs",
@@ -548,10 +550,20 @@ def train(
     print(f"\nTesting with checkpoint: {test_ckpt_path}")
     best_model = CurriculumSMTTrainer.load_from_checkpoint(
         test_ckpt_path,
+        maxh=int(max_height),
+        maxw=int(max_width),
+        maxlen=int(max_len),
+        out_categories=train_set.vocab_size(),
+        padding_token=w2i["<pad>"],
+        in_channels=1,
+        w2i=w2i,
+        i2w=i2w,
+        load_pretrained=False,
         strict=False,
     )
     best_model.freeze()
     best_model.eval()
+    test_set.set_stage_direct(num_cl_stages)
     trainer.test(best_model, dataloaders=test_loader)
 
 

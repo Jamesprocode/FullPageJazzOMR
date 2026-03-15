@@ -9,3 +9,5 @@ vocab/
 wandb/
 *.egg-info/
 .DS_Store
+test_predictions/
+temp.py
