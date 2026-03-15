@@ -208,10 +208,13 @@ class DynamicCurriculumAdvancer(Callback):
               f"val_set_size={len(self.val_set)}")
 
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule):
-        val_ser = trainer.callback_metrics.get("val/ser")
-        if val_ser is None:
+        # Compute val/ser directly from preds/grtrs instead of callback_metrics,
+        # which may still hold the previous epoch's value at this point.
+        if not pl_module.preds:
             return
-        val_ser = float(val_ser)
+        from jazzmus.dataset.eval_functions import compute_poliphony_metrics
+        _, val_ser, _ = compute_poliphony_metrics(pl_module.preds, pl_module.grtrs)
+        val_ser = min(float(val_ser), 100.0)
 
         # ── final-stage early stopping ────────────────────────────────────────
         if self._at_final:

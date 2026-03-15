@@ -18,7 +18,7 @@ PageCropDataset.system_height    = 256   # each system row = 256px; N-system cro
 PageCropDataset.num_cl_stages    = 9
 PageCropDataset.final_stage      = 9
 PageCropDataset.curriculum_start = 1
-PageCropDataset.replay_ratio     = 0.1   # replay 10% of each previous stage each epoch
+PageCropDataset.replay_ratio     = 0.25   # replay 10% of each previous stage each epoch
 
 # CURRICULUM
 DynamicCurriculumAdvancer.num_cl_stages  = 9
@@ -31,9 +31,9 @@ SMT_Trainer.warmup_steps   = 150
 SMT_Trainer.load_pretrained = False
 
 # TRAINING HYPERPARAMS
-train_hparams.lr                        = 5e-5
-train_hparams.accumulate_grad_batches   = 8
-train_hparams.batch_size                = 8
+train_hparams.lr                        = 1e-4
+train_hparams.accumulate_grad_batches   = 1
+train_hparams.batch_size                = 16
 train_hparams.val_batch_size            = 1
 train_hparams.num_workers               = 4
 train_hparams.check_val_every_n_epoch   = 10
