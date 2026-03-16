@@ -8,8 +8,8 @@ train_paths.data_path            = "/home/hice1/jwang3180/scratch/Fullpage Jazzm
 train_paths.checkpoint           = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
 train_paths.weights_dir          = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay"
 train_paths.synthetic_data_path  = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_synthetic"   # set to None to disable
-train_paths.resume               = None   # set to checkpoint path to resume
-train_paths.resume_stage         = 1
+train_paths.resume               = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay/pagecrop_fold0_stage5.ckpt"  # set to checkpoint path to resume
+train_paths.resume_stage         = 6
 train_paths.wandb_name           = "pagecrop_replay_9stage"
 
 # DATASET
@@ -31,9 +31,9 @@ SMT_Trainer.warmup_steps   = 150
 SMT_Trainer.load_pretrained = False
 
 # TRAINING HYPERPARAMS
-train_hparams.lr                        = 1e-4
+train_hparams.lr                        = 5e-5
 train_hparams.accumulate_grad_batches   = 1
-train_hparams.batch_size                = 16
+train_hparams.batch_size                = 8
 train_hparams.val_batch_size            = 1
 train_hparams.num_workers               = 4
 train_hparams.check_val_every_n_epoch   = 10
