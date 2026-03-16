@@ -272,6 +272,11 @@ class DynamicCurriculumAdvancer(Callback):
             self.train_set.set_stage_direct(self._stage)
             self.val_set.set_stage_direct(self._stage)
 
+            # Reset stale val/ser from previous stage so progress bar
+            # and wandb don't carry over the old stage's best value.
+            trainer.callback_metrics.pop("val/ser", None)
+            trainer.callback_metrics.pop("val/loss", None)
+
             # Force Lightning to update epoch size for the new stage
             # (includes replay samples, so epoch size grows with each stage)
             new_len = len(self.train_set)
@@ -478,6 +483,7 @@ def train(
         save_top_k=0,
         save_last=True,
         verbose=False,
+        save_on_train_epoch_end=True,   # save at epoch end so resume doesn't warn about incomplete epoch
     )
 
     # best_ckpt: starts disabled (save_top_k=0).
