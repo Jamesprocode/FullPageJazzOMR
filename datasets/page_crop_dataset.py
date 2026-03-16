@@ -374,9 +374,10 @@ class PageCropDataset(Dataset):
                 n_maxed   = self._maxedout_counts.get(clamped, 0)
                 print(f"  [Dataset/{self.split}] stage={stage}  eligible={len(self._cached_eligible)}"
                       f"  (real={n_real_el}, synthetic={n_syn_el}, maxed-out={n_maxed})  n_dist={n_dist}")
-            # Integrity check: every sample must have n == stage (strict) or n == page_max_n (maxed-out)
+            # Integrity check: every current-stage sample must have n == stage (strict) or n == page_max_n (maxed-out)
+            # Only check current_eligible, not replay samples (which intentionally have different n)
             bad = []
-            for i in self._cached_eligible:
+            for i in current_eligible:
                 _, _, n = self.samples[i]
                 pmn = self._page_max_n.get(self._sample_pid[i], n)
                 expected = pmn if (self.final_stage is not None and clamped >= self.final_stage) else min(clamped, pmn)
@@ -384,8 +385,10 @@ class PageCropDataset(Dataset):
                     bad.append((i, n, expected, pmn))
             if bad:
                 print(f"  WARNING [{self.split}] stage={stage}: {len(bad)} samples with wrong n:")
-                for idx, n_got, n_exp, pmn in bad:
+                for idx, n_got, n_exp, pmn in bad[:5]:
                     print(f"    sample {idx}  path={self.samples[idx][0]}  n={n_got}  expected={n_exp}  page_max_n={pmn}")
+                if len(bad) > 5:
+                    print(f"    ... and {len(bad) - 5} more")
             # Val-specific check: warn on any sample that isn't at stage N and isn't maxed-out
             if self.split == "val":
                 wrong_val = [
@@ -403,7 +406,10 @@ class PageCropDataset(Dataset):
     def __len__(self) -> int:
         if self.split == "test":
             return len(self.samples)
-        return self._n_pages
+        # Use current eligible count (includes replay samples) so DataLoader
+        # generates enough indices to cover all samples including replay.
+        eligible = self._stage_eligible()
+        return len(eligible)
 
     def __getitem__(self, index):
         assert self.w2i is not None, "Call set_dictionaries() before iterating."

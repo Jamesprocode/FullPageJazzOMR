@@ -208,7 +208,7 @@ class SMT_Trainer(L.LightningModule):
 
     def compute_log_metrics(self, preds, grtrs, step="val"):
         cer, ser, ler = compute_poliphony_metrics(preds, grtrs)
-        
+
         self.log(
             f"{step}/cer",
             100 if cer > 100 else cer,
