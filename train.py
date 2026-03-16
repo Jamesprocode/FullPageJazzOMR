@@ -120,7 +120,6 @@ class DynamicCurriculumAdvancer(Callback):
         self._at_final        = False
         self._best_ser        = float("inf")
         self._no_improve      = 0
-        self._skip_next_val   = False   # skip best/ckpt update for first val after stage advance
 
         train_set.set_stage_direct(1)
         val_set.set_stage_direct(1)
@@ -208,13 +207,10 @@ class DynamicCurriculumAdvancer(Callback):
               f"val_set_size={len(self.val_set)}")
 
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule):
-        # Compute val/ser directly from preds/grtrs instead of callback_metrics,
-        # which may still hold the previous epoch's value at this point.
-        if not pl_module.preds:
+        val_ser = trainer.callback_metrics.get("val/ser")
+        if val_ser is None:
             return
-        from jazzmus.dataset.eval_functions import compute_poliphony_metrics
-        _, val_ser, _ = compute_poliphony_metrics(pl_module.preds, pl_module.grtrs)
-        val_ser = min(float(val_ser), 100.0)
+        val_ser = float(val_ser)
 
         # ── final-stage early stopping ────────────────────────────────────────
         if self._at_final:
@@ -234,14 +230,6 @@ class DynamicCurriculumAdvancer(Callback):
         # ── pre-final: check whether to advance stage ─────────────────────────
         # Increment patience counter only when below threshold AND no longer improving.
         # If val/ser is still dropping, reset counter — keep training.
-        if self._skip_next_val:
-            self._skip_next_val = False
-            print(f"  [Curriculum] stage={self._stage}/{self.num_cl_stages}  "
-                  f"val/ser={val_ser:.2f}  threshold={self.ser_threshold:.2f}  "
-                  f"best={self._stage_best_ser:.2f}  below={self._epochs_below}/{self.patience}  "
-                  f"[skipped — first val after stage advance]")
-            return
-
         if val_ser < self.ser_threshold:
             if val_ser < self._stage_best_ser:
                 self._stage_best_ser = val_ser
@@ -281,9 +269,15 @@ class DynamicCurriculumAdvancer(Callback):
             self._epochs_below = 0
             self._stage_best_ser = float("inf")
             self._stage_best_ckpt = None
-            self._skip_next_val = True   # ignore first val of new stage (may be stale data)
             self.train_set.set_stage_direct(self._stage)
             self.val_set.set_stage_direct(self._stage)
+
+            # Force Lightning to update epoch size for the new stage
+            # (includes replay samples, so epoch size grows with each stage)
+            new_len = len(self.train_set)
+            batch_size = trainer.train_dataloader.batch_size
+            trainer.fit_loop.max_batches = (new_len + batch_size - 1) // batch_size
+            print(f"  Updated epoch size: {new_len} samples, {trainer.fit_loop.max_batches} steps")
 
             if self._stage >= self.num_cl_stages:
                 self._activate_final_stage(trainer, pl_module, val_ser)
@@ -363,12 +357,21 @@ def train(
     val_set   = PageCropDataset(data_path=data_path, split="val",   fold=fold, augment=False)
     test_set  = PageCropDataset(data_path=data_path, split="test",  fold=fold, augment=False)
 
-    # Build vocabulary from train + val + test GTs
-    w2i, i2w = check_and_retrieveVocabulary(
-        [train_set.get_gt(), val_set.get_gt(), test_set.get_gt()],
-        "vocab",
-        "vocab_cl",
-    )
+    # Build or load vocabulary
+    if resume is not None:
+        # When resuming, use vocab from the resume checkpoint to guarantee consistency
+        import torch as _torch
+        _ckpt = _torch.load(resume, map_location="cpu", weights_only=False)
+        w2i = _ckpt["hyper_parameters"]["w2i"]
+        i2w = _ckpt["hyper_parameters"]["i2w"]
+        del _ckpt
+        print(f"  Vocab loaded from resume checkpoint ({len(w2i)} tokens)")
+    else:
+        w2i, i2w = check_and_retrieveVocabulary(
+            [train_set.get_gt(), val_set.get_gt(), test_set.get_gt()],
+            "vocab",
+            "vocab_cl",
+        )
     train_set.set_dictionaries(w2i, i2w)
     val_set.set_dictionaries(w2i, i2w)
     test_set.set_dictionaries(w2i, i2w)
@@ -553,20 +556,16 @@ def train(
     print(f"\nTesting with checkpoint: {test_ckpt_path}")
     best_model = CurriculumSMTTrainer.load_from_checkpoint(
         test_ckpt_path,
-        maxh=int(max_height),
-        maxw=int(max_width),
-        maxlen=int(max_len),
-        out_categories=train_set.vocab_size(),
-        padding_token=w2i["<pad>"],
-        in_channels=1,
-        w2i=w2i,
-        i2w=i2w,
         load_pretrained=False,
         strict=False,
     )
+    # Use vocab from the test checkpoint (guaranteed match)
+    test_w2i = best_model.model.w2i
+    test_i2w = best_model.model.i2w
+    test_set.set_dictionaries(test_w2i, test_i2w)
+    test_set.set_stage_direct(num_cl_stages)
     best_model.freeze()
     best_model.eval()
-    test_set.set_stage_direct(num_cl_stages)
     trainer.test(best_model, dataloaders=test_loader)
 
 
