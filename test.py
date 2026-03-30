@@ -24,7 +24,7 @@ from jazzmus.dataset.smt_dataset import batch_preparation_img2seq
 
 
 def test(
-    checkpoint:   str = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/pagecrop/pagecrop_fold0_best.ckpt",
+    checkpoint:   str = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-v2.ckpt",
     data_path:    str = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_pagecrop",
     fold:          int = 0,
     final_stage:   int = 9,
