@@ -649,10 +649,15 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_model_path = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt"
     test_split_file = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_pagecrop/splits/test_0.txt"
+    data_base_dir = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data"
 
     # Load test split
     with open(test_split_file, 'r') as f:
-        test_pairs = [line.strip().split() for line in f.readlines()]
+        test_pairs = [
+            (os.path.join(data_base_dir, parts[0]), os.path.join(data_base_dir, parts[1]))
+            for line in f.readlines()
+            if (parts := line.strip().split()) and len(parts) >= 2
+        ]
 
     print(f"Loaded {len(test_pairs)} test samples")
 
