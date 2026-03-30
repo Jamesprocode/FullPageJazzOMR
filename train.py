@@ -120,6 +120,7 @@ class DynamicCurriculumAdvancer(Callback):
         self._at_final        = False
         self._best_ser        = float("inf")
         self._no_improve      = 0
+        self._clear_ser       = False          # deferred pop flag
 
         train_set.set_stage_direct(1)
         val_set.set_stage_direct(1)
@@ -197,6 +198,11 @@ class DynamicCurriculumAdvancer(Callback):
             )
         print(f"  ── Full-sweep done ──\n")
 
+    def on_train_epoch_start(self, trainer: L.Trainer, pl_module: L.LightningModule):
+        if self._clear_ser:
+            trainer.callback_metrics.pop("val/ser", None)
+            self._clear_ser = False
+
     def on_train_start(self, trainer: L.Trainer, pl_module: L.LightningModule):
         pl_module.set_stage(self._stage)
         pl_module.set_stage_calculator(lambda epoch: self._stage)
@@ -272,9 +278,9 @@ class DynamicCurriculumAdvancer(Callback):
             self.train_set.set_stage_direct(self._stage)
             self.val_set.set_stage_direct(self._stage)
 
-            # Reset stale val/ser from previous stage so progress bar
-            # and wandb don't carry over the old stage's best value.
-            trainer.callback_metrics.pop("val/ser", None)
+            # Defer clearing stale val/ser to next train epoch start,
+            # so ModelCheckpoint can still read it on this epoch.
+            self._clear_ser = True
             trainer.callback_metrics.pop("val/loss", None)
 
             # Force Lightning to update epoch size for the new stage
