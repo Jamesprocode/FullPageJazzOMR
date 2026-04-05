@@ -645,7 +645,7 @@ if __name__ == "__main__":
         print_page_chord_metrics,
     )
 
-    checkpint_path = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
+    checkpint_path = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best/smt_pre_syn_medium.ckpt"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_model_path = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt"
     test_split_file = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_pagecrop/splits/test_0.txt"
@@ -763,38 +763,30 @@ if __name__ == "__main__":
             print(f"\n✗ Failed on {img_path}: {e}")
             continue
 
-    # Compute aggregate metrics (all predictions concatenated)
-    print(f"\n{'='*60}")
-    print("AGGREGATE RESULTS (All predictions concatenated)")
-    print(f"{'='*60}")
-    print(f"Successfully processed: {len(all_predictions)}/{len(test_pairs)}")
-
+    # ── Aggregate metrics (matches curriculum training computation) ───────────
+    # CER/SER/LER: all predictions passed at once (aggregate, not per-sample mean)
     cer_agg, ser_agg, ler_agg = compute_poliphony_metrics(all_predictions, all_ground_truths)
 
-    print(f"\nCER (Character Error Rate): {cer_agg:.2f}%")
-    print(f"SER (Symbol Error Rate):    {ser_agg:.2f}%")
-    print(f"LER (Line Error Rate):      {ler_agg:.2f}%")
-    print(f"{'='*60}\n")
+    # Root SER / Chord SER: pool all per-page edit distances together (same as
+    # aggregate_page_chord_metrics in trainer._log_chord_metrics)
+    page_level_results = [m['per_page_chord_metrics'] for m in per_sample_metrics if 'per_page_chord_metrics' in m]
+    if page_level_results:
+        agg_chord = aggregate_page_chord_metrics(page_level_results)
+        root_ser  = agg_chord['agg_root_ser']
+        chord_ser = agg_chord['agg_ser_no_dots']
+    else:
+        root_ser  = float('nan')
+        chord_ser = float('nan')
 
-    # Compute average of per-sample metrics
-    print(f"{'='*60}")
-    print("AVERAGE PER-SAMPLE RESULTS")
-    print(f"{'='*60}")
-
+    # ── Per-sample average metrics ────────────────────────────────────────────
     cer_mean = np.mean([m['cer'] for m in per_sample_metrics])
     ser_mean = np.mean([m['ser'] for m in per_sample_metrics])
     ler_mean = np.mean([m['ler'] for m in per_sample_metrics])
+    cer_std  = np.std([m['cer'] for m in per_sample_metrics])
+    ser_std  = np.std([m['ser'] for m in per_sample_metrics])
+    ler_std  = np.std([m['ler'] for m in per_sample_metrics])
 
-    cer_std = np.std([m['cer'] for m in per_sample_metrics])
-    ser_std = np.std([m['ser'] for m in per_sample_metrics])
-    ler_std = np.std([m['ler'] for m in per_sample_metrics])
-
-    print(f"\nCER: {cer_mean:.2f}% (±{cer_std:.2f}%)")
-    print(f"SER: {ser_mean:.2f}% (±{ser_std:.2f}%)")
-    print(f"LER: {ler_mean:.2f}% (±{ler_std:.2f}%)")
-    print(f"{'='*60}\n")
-
-    # Per-system edit distance chord metrics (aggregate all per-system results across pages)
+    # ── Per-system chord metrics ──────────────────────────────────────────────
     all_system_chord_metrics = []
     for m in per_sample_metrics:
         if 'per_system_chord_metrics' in m:
@@ -803,23 +795,19 @@ if __name__ == "__main__":
         agg_per_system = aggregate_page_chord_metrics(all_system_chord_metrics)
         print_page_chord_metrics(agg_per_system, unit_label="system")
 
-    # Per-page edit distance chord metrics
-    page_level_results = [m['per_page_chord_metrics'] for m in per_sample_metrics if 'per_page_chord_metrics' in m]
+    # ── Per-page chord metrics ────────────────────────────────────────────────
     if page_level_results:
-        agg_per_page = aggregate_page_chord_metrics(page_level_results)
-        print_page_chord_metrics(agg_per_page, unit_label="page")
+        print_page_chord_metrics(agg_chord, unit_label="page")
 
-    # Show the 5 worst and 5 best chord recognition pages (using per-system metrics)
+    # ── 5 worst / 5 best pages ────────────────────────────────────────────────
     pages_with_chord = [m for m in per_sample_metrics if 'per_system_chord_metrics' in m]
     if pages_with_chord:
-        # Sort by chord SER (without dots) — worst has highest SER
         pages_with_chord.sort(
             key=lambda x: x['per_system_chord_metrics']['agg_ser_no_dots'],
             reverse=True
         )
-
         for label, samples in [("5 WORST", pages_with_chord[:5]),
-                               ("5 BEST", pages_with_chord[-5:][::-1])]:
+                               ("5 BEST",  pages_with_chord[-5:][::-1])]:
             print(f"\n{'='*60}")
             print(f"{label} CHORD RECOGNITION PAGES (Root / Chord / Structure Accuracy)")
             print(f"{'='*60}")
@@ -829,23 +817,34 @@ if __name__ == "__main__":
                 tgc = cm['total_gt_chords']
                 tgt = cm['total_gt_tokens']
                 tgr = cm['total_gt_roots']
-                root_acc = max(0.0, 100.0 - cm['agg_root_ser'])
+                root_acc  = max(0.0, 100.0 - cm['agg_root_ser'])
                 chord_acc = max(0.0, 100.0 - cm['agg_ser_no_dots'])
                 struct_acc = max(0.0, 100.0 - cm['agg_ser_with_dots'])
                 print(f"\n  {i+1}. {img_name}  ({cm['n_units']} systems, {tgc} GT chords)")
                 print(f"     Root Acc:      {root_acc:.1f}% = 1 - {cm['total_root_errors']}/{tgr}  (S={cm['total_subs_roots']} I={cm['total_ins_roots']} D={cm['total_del_roots']})")
                 print(f"     Chord Acc:     {chord_acc:.1f}% = 1 - {cm['total_ed_no_dots']}/{tgc}  (S={cm['total_subs_no_dots']} I={cm['total_ins_no_dots']} D={cm['total_del_no_dots']})")
                 print(f"     Structure Acc: {struct_acc:.1f}% = 1 - {cm['total_ed_with_dots']}/{tgt}  (S={cm['total_subs_with_dots']} I={cm['total_ins_with_dots']} D={cm['total_del_with_dots']})")
-                # Show pred vs gt tokens per system for comparison (including dots)
                 pred_sys_chunks = m['prediction'].split('!!linebreak:original')
-                gt_sys_chunks = m['ground_truth'].split('!!linebreak:original')
+                gt_sys_chunks   = m['ground_truth'].split('!!linebreak:original')
                 n_sys = min(len(pred_sys_chunks), len(gt_sys_chunks))
                 for s in range(n_sys):
                     pred_toks = _extract_mxhm_tokens(pred_sys_chunks[s])
-                    gt_toks = _extract_mxhm_tokens(gt_sys_chunks[s])
+                    gt_toks   = _extract_mxhm_tokens(gt_sys_chunks[s])
                     if pred_toks or gt_toks:
                         print(f"     System {s+1}:")
                         print(f"       Pred: {pred_toks}")
                         print(f"       GT:   {gt_toks}")
             print(f"{'='*60}\n")
+
+    # ── Final 5-metric summary ────────────────────────────────────────────────
+    print(f"\n{'='*60}")
+    print("FINAL SUMMARY  (aggregate — matches curriculum training metrics)")
+    print(f"{'='*60}")
+    print(f"Successfully processed: {len(all_predictions)}/{len(test_pairs)}")
+    print(f"\n  CER:       {cer_agg:.2f}%   (avg ± std: {cer_mean:.2f}% ± {cer_std:.2f}%)")
+    print(f"  SER:       {ser_agg:.2f}%   (avg ± std: {ser_mean:.2f}% ± {ser_std:.2f}%)")
+    print(f"  LER:       {ler_agg:.2f}%   (avg ± std: {ler_mean:.2f}% ± {ler_std:.2f}%)")
+    print(f"  Root SER:  {root_ser:.2f}%")
+    print(f"  Chord SER: {chord_ser:.2f}%")
+    print(f"{'='*60}\n")
 

@@ -11,3 +11,6 @@ wandb/
 .DS_Store
 test_predictions/
 temp.py
+METHODOLOGY.md
+paper_methodology.md
+paper_sections.tex

@@ -1,0 +1,54 @@
+# ── Stacking curriculum: 9-stage on-the-fly experiment ──────────────────────
+# Compare against pagecrop_9stage_replay.gin.
+# Train:  StackedPageDataset — on-the-fly stacking from jazzmus_systems
+#         + explicit 25 % replay per prior stage
+#         + all 1688 real pagecrop entries added at stage 9
+# Val:    PageCropDataset — real pre-computed crops (identical to replay run)
+# Test:   PageCropDataset — original test set (unchanged)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# PATHS
+train_stacked_paths.system_data_path = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/data/jazzmus_systems"
+train_stacked_paths.real_data_path   = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_pagecrop"
+train_stacked_paths.checkpoint       = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
+train_stacked_paths.weights_dir      = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/stacked_9stage"
+train_stacked_paths.resume           = None   # set to a .ckpt path to resume
+train_stacked_paths.resume_stage     = 1
+train_stacked_paths.wandb_name       = "stacked_9stage_fold0"
+
+# DATASET (train + val)
+StackedPageDataset.system_height    = 256
+StackedPageDataset.num_cl_stages    = 9
+StackedPageDataset.final_stage      = 9
+StackedPageDataset.replay_ratio     = 0.25   # 25 % of dataset_length replayed per prior stage
+StackedPageDataset.width_tolerance  = 0.15
+StackedPageDataset.dataset_length   = 1000   # base current-stage samples per epoch
+
+# TEST DATASET (real full pages — same as replay experiment)
+PageCropDataset.fixed_img_height = None
+PageCropDataset.system_height    = 256
+PageCropDataset.num_cl_stages    = 9
+PageCropDataset.final_stage      = 9
+PageCropDataset.curriculum_start = 1
+PageCropDataset.replay_ratio     = 0.0
+
+# CURRICULUM
+DynamicCurriculumAdvancer.num_cl_stages  = 9
+DynamicCurriculumAdvancer.ser_threshold  = 20.0
+DynamicCurriculumAdvancer.patience       = 5
+DynamicCurriculumAdvancer.final_patience = 10
+
+# MODEL
+SMT_Trainer.warmup_steps    = 150
+SMT_Trainer.load_pretrained = False
+
+# TRAINING HYPERPARAMS
+train_hparams.lr                      = 5e-6
+train_hparams.accumulate_grad_batches = 1
+train_hparams.batch_size              = 1
+train_hparams.val_batch_size          = 1
+train_hparams.num_workers             = 4
+train_hparams.check_val_every_n_epoch = 10
+
+# VOCAB
+make_vocabulary.pathToSave = "vocab"
