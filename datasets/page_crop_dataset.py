@@ -77,6 +77,7 @@ class PageCropDataset(Dataset):
         final_stage=None,           # stage at which pages use their actual max crop
         synthetic_data_path=None,   # optional: add synthetic train samples
         replay_ratio=0.0,           # fraction of each previous stage to replay during train
+        epoch_size=None,            # if set, cap the number of samples drawn per epoch
     ):
         super().__init__()
         self.split = split
@@ -89,6 +90,7 @@ class PageCropDataset(Dataset):
         self.curriculum_start = curriculum_start
         self.final_stage = final_stage  # None means never switch to max-crop mode
         self.replay_ratio = replay_ratio
+        self.epoch_size = epoch_size
 
         self.epoch = 0
         # Shared tensor so DataLoader worker processes see stage updates without
@@ -409,7 +411,10 @@ class PageCropDataset(Dataset):
         # Use current eligible count (includes replay samples) so DataLoader
         # generates enough indices to cover all samples including replay.
         eligible = self._stage_eligible()
-        return len(eligible)
+        n = len(eligible)
+        if self.epoch_size is not None and self.split == "train":
+            n = min(n, self.epoch_size)
+        return n
 
     def __getitem__(self, index):
         assert self.w2i is not None, "Call set_dictionaries() before iterating."
