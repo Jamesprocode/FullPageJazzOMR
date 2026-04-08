@@ -763,6 +763,31 @@ if __name__ == "__main__":
             print(f"\n✗ Failed on {img_path}: {e}")
             continue
 
+    # ── kern-spine-only metrics ───────────────────────────────────────────────
+    def _kern_spine_only(text):
+        """Return only the **kern column from an untokenized humdrum string."""
+        lines = text.split("\n")
+        out = []
+        kern_col = None
+        for line in lines:
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            if kern_col is None:
+                for i, p in enumerate(parts):
+                    if p.strip().startswith("**kern"):
+                        kern_col = i
+                        break
+            if kern_col is not None and kern_col < len(parts):
+                out.append(parts[kern_col])
+            else:
+                out.append(parts[0])
+        return "\n".join(out)
+
+    preds_kern = [_kern_spine_only(p) for p in all_predictions]
+    gts_kern   = [_kern_spine_only(g) for g in all_ground_truths]
+    cer_k, ser_k, ler_k = compute_poliphony_metrics(preds_kern, gts_kern)
+
     # ── Aggregate metrics (matches curriculum training computation) ───────────
     # CER/SER/LER: all predictions passed at once (aggregate, not per-sample mean)
     cer_agg, ser_agg, ler_agg = compute_poliphony_metrics(all_predictions, all_ground_truths)
@@ -846,5 +871,8 @@ if __name__ == "__main__":
     print(f"  LER:       {ler_agg:.2f}%   (avg ± std: {ler_mean:.2f}% ± {ler_std:.2f}%)")
     print(f"  Root SER:  {root_ser:.2f}%")
     print(f"  Chord SER: {chord_ser:.2f}%")
+    print(f"\n  Kern-only CER: {cer_k:.2f}%")
+    print(f"  Kern-only SER: {ser_k:.2f}%")
+    print(f"  Kern-only LER: {ler_k:.2f}%")
     print(f"{'='*60}\n")
 

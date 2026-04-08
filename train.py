@@ -268,8 +268,7 @@ class DynamicCurriculumAdvancer(Callback):
             print(f"  ── Stage {self._stage} checkpoint saved: {stage_path.name} "
                   f"(best val/ser={self._stage_best_ser:.2f}) ──")
 
-            # Full validation sweep over all stages 1..current before advancing
-            self._run_full_sweep(trainer, pl_module)
+            # Full validation sweep disabled to save time
 
             self._stage = min(self._stage + 1, self.num_cl_stages)
             self._epochs_below = 0
