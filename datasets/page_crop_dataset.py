@@ -121,13 +121,8 @@ class PageCropDataset(Dataset):
                 if len(parts) < 3:
                     continue
                 raw_img, raw_gt, n = parts[0], parts[1], int(parts[2])
-                # Resolve paths: try as-is first, then relative to path_base
-                img_path = Path(raw_img)
-                gt_path  = Path(raw_gt)
-                if not img_path.exists():
-                    img_path = path_base / raw_img
-                if not gt_path.exists():
-                    gt_path = path_base / raw_gt
+                img_path = self._resolve(raw_img, path_base)
+                gt_path  = self._resolve(raw_gt,  path_base)
                 self.samples.append((str(img_path), str(gt_path), n))
 
         n_real = len(self.samples)
@@ -145,12 +140,8 @@ class PageCropDataset(Dataset):
                         if len(parts) < 3:
                             continue
                         raw_img, raw_gt, n = parts[0], parts[1], int(parts[2])
-                        img_path = Path(raw_img)
-                        gt_path  = Path(raw_gt)
-                        if not img_path.exists():
-                            img_path = syn_base / raw_img
-                        if not gt_path.exists():
-                            gt_path = syn_base / raw_gt
+                        img_path = self._resolve(raw_img, syn_base)
+                        gt_path  = self._resolve(raw_gt,  syn_base)
                         self.samples.append((str(img_path), str(gt_path), n))
                         n_syn += 1
                 print(f"  + {n_syn} synthetic samples from {syn_file}")
@@ -246,6 +237,29 @@ class PageCropDataset(Dataset):
         self._maxedout_counts = maxedout_counts
         if len(set(len(v) for v in self._eligible_for.values())) > 1:
             print(f"  WARNING: eligible count varies — possible page ID collision")
+
+    # ── path resolution ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve(raw: str, base_dir: Path) -> Path:
+        """Resolve a split-file path against base_dir.
+
+        Tries in order:
+          1. absolute / as-is
+          2. base_dir / raw
+          3. base_dir / raw with first component stripped  (handles 'data/' prefix)
+        """
+        p = Path(raw)
+        if p.exists():
+            return p
+        candidate = base_dir / p
+        if candidate.exists():
+            return candidate
+        if len(p.parts) > 1:
+            stripped = base_dir / Path(*p.parts[1:])
+            if stripped.exists():
+                return stripped
+        return candidate  # best guess; caller will get FileNotFoundError if wrong
 
     # ── curriculum stage API ─────────────────────────────────────────────────
 
@@ -345,6 +359,17 @@ class PageCropDataset(Dataset):
             from collections import Counter
             max_n = max(self._eligible_for.keys())
             clamped = min(stage, max_n)
+
+            # Val: strict — only samples with n == current stage (flat, ~105/stage)
+            if self.split == "val":
+                self._cached_eligible = [
+                    i for i, (_, _, n) in enumerate(self.samples) if n == clamped
+                ]
+                self._cached_stage = stage
+                n_dist = dict(sorted(Counter(self.samples[i][2] for i in self._cached_eligible).items()))
+                print(f"  [Dataset/val] stage={stage}  eligible={len(self._cached_eligible)}  n_dist={n_dist}")
+                return self._cached_eligible
+
             current_eligible = list(self._eligible_for.get(clamped, self._eligible_for[max_n]))
 
             # ── experience replay: add fraction of each previous stage (train only) ──
