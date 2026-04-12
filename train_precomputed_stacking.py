@@ -2,10 +2,10 @@
 Full-page curriculum training — pre-computed stacking strategy.
 
 Differences from train.py:
+  - Uses StackingCropDataset (strict n-matching, no maxed-out masking logic).
   - Starts at stage 2 (stage 1 = system-level, already covered by smt_0.ckpt).
-  - Validation uses jazzmus_pagecrop (real pages) for fair comparison with test.
+  - Validation uses jazzmus_stacked val split (stacked N=1..8, real full pages at N=9).
   - Full-sweep validation on stage advance is disabled (too slow, not informative).
-  - system_height should be 128 to match the pretrained model's training resolution.
 
 Run from FullPageJazzOMR/ project root:
     python train_precomputed_stacking.py \\
@@ -35,6 +35,7 @@ from torch.utils.data import DataLoader
 sys.path.insert(0, str(Path(__file__).parent))
 
 from datasets.page_crop_dataset import PageCropDataset
+from datasets.stacking_crop_dataset import StackingCropDataset
 from jazzmus.curriculum.trainer import CurriculumSMTTrainer
 from jazzmus.dataset.smt_dataset import batch_preparation_img2seq
 from jazzmus.dataset.smt_dataset_utils import check_and_retrieveVocabulary
@@ -79,8 +80,8 @@ class DynamicCurriculumAdvancer(Callback):
 
     def __init__(
         self,
-        train_set:      PageCropDataset,
-        val_set:        PageCropDataset,
+        train_set,
+        val_set,
         best_ckpt:      ModelCheckpoint,
         weights_dir:    str,
         fold:           int,
@@ -89,6 +90,8 @@ class DynamicCurriculumAdvancer(Callback):
         patience:       int   = 3,
         final_patience: int   = 10,
         start_stage:    int   = 2,
+        early_accum_grad:    int = 1,   # accumulate_grad_batches for early stages
+        early_stage_cutoff:  int = 0,   # use early_accum_grad for stages <= this
     ):
         self.train_set      = train_set
         self.val_set        = val_set
@@ -99,6 +102,8 @@ class DynamicCurriculumAdvancer(Callback):
         self.ser_threshold  = ser_threshold
         self.patience       = patience
         self.final_patience = final_patience
+        self.early_accum_grad   = early_accum_grad
+        self.early_stage_cutoff = early_stage_cutoff
         self._stage           = start_stage
         self._epochs_below    = 0
         self._stage_best_ser  = float("inf")
@@ -128,6 +133,17 @@ class DynamicCurriculumAdvancer(Callback):
     def on_train_start(self, trainer, pl_module):
         pl_module.set_stage(self._stage)
         pl_module.set_stage_calculator(lambda epoch: self._stage)
+        # Apply early-stage accumulation + scaled lr if starting within the early range
+        self._base_lr = pl_module.hparams.lr
+        if self.early_accum_grad > 1 and self._stage <= self.early_stage_cutoff:
+            trainer.accumulate_grad_batches = self.early_accum_grad
+            scaled_lr = self._base_lr * self.early_accum_grad
+            for pg in pl_module.optimizers().param_groups:
+                pg["lr"] = scaled_lr
+            print(f"  [Early batch] stage={self._stage} <= cutoff={self.early_stage_cutoff}  "
+                  f"accumulate_grad_batches={self.early_accum_grad}  "
+                  f"lr={self._base_lr} → {scaled_lr}  "
+                  f"(effective batch={trainer.train_dataloader.batch_size * self.early_accum_grad})")
 
     def on_validation_epoch_start(self, trainer, pl_module):
         self.val_set.set_stage_direct(self._stage)
@@ -160,7 +176,7 @@ class DynamicCurriculumAdvancer(Callback):
                 self._stage_best_ser = val_ser
                 self._epochs_below = 0
                 self._stage_best_ckpt = str(
-                    Path(self.weights_dir) / f"pagecrop_fold{self.fold}_stage{self._stage}_best.ckpt"
+                    Path(self.weights_dir) / f"stacked_fold{self.fold}_stage{self._stage}_best.ckpt"
                 )
                 trainer.save_checkpoint(self._stage_best_ckpt)
             else:
@@ -173,7 +189,7 @@ class DynamicCurriculumAdvancer(Callback):
               f"best={self._stage_best_ser:.2f}  below={self._epochs_below}/{self.patience}")
 
         if self._epochs_below >= self.patience:
-            stage_path = Path(self.weights_dir) / f"pagecrop_fold{self.fold}_stage{self._stage}.ckpt"
+            stage_path = Path(self.weights_dir) / f"stacked_fold{self.fold}_stage{self._stage}.ckpt"
             if self._stage_best_ckpt and Path(self._stage_best_ckpt).exists():
                 ckpt = torch.load(self._stage_best_ckpt, map_location=pl_module.device)
                 pl_module.load_state_dict(ckpt["state_dict"])
@@ -194,10 +210,24 @@ class DynamicCurriculumAdvancer(Callback):
             self._clear_ser = True
             trainer.callback_metrics.pop("val/loss", None)
 
+            # Switch from early accumulation + lr to normal when crossing the cutoff
+            if (self.early_accum_grad > 1
+                    and self._stage > self.early_stage_cutoff
+                    and trainer.accumulate_grad_batches != 1):
+                trainer.accumulate_grad_batches = 1
+                for pg in pl_module.optimizers().param_groups:
+                    pg["lr"] = self._base_lr
+                print(f"  [Early batch → normal] stage={self._stage} > cutoff={self.early_stage_cutoff}  "
+                      f"accumulate_grad_batches=1  lr → {self._base_lr}  "
+                      f"(effective batch={trainer.train_dataloader.batch_size})")
+
             new_len = len(self.train_set)
             batch_size = trainer.train_dataloader.batch_size
+            accum = trainer.accumulate_grad_batches
             trainer.fit_loop.max_batches = (new_len + batch_size - 1) // batch_size
-            print(f"  Updated epoch size: {new_len} samples, {trainer.fit_loop.max_batches} steps")
+            print(f"  Updated epoch size: {new_len} samples, "
+                  f"{trainer.fit_loop.max_batches} steps  "
+                  f"(effective batch={batch_size * accum})")
 
             if self._stage >= self.num_cl_stages:
                 self._activate_final_stage(trainer, pl_module, val_ser)
@@ -256,15 +286,20 @@ def train(
     print(f"  Config        : {config}")
     print(f"  Checkpoint    : {checkpoint}")
     print(f"  Train data    : {data_path}")
-    print(f"  Val data      : {val_data_path}  (pagecrop — real pages)")
+    print(f"  Val data      : {data_path}  (stacked — real full pages at final stage)")
+    print(f"  Test data     : {val_data_path}  (pagecrop — real pages)")
     print(f"  Weights dir   : {weights_dir}")
     print(f"  Fold          : {fold}")
     print(f"  LR            : {lr}  |  Batch: {batch_size}  |  Accum: {accumulate_grad_batches}")
     print(f"  Start stage   : {resume_stage}  (stage 1 skipped — covered by pretrained model)")
 
     # ── datasets ───────────────────────────────────────────────────────────────
-    train_set = PageCropDataset(data_path=data_path,     split="train", fold=fold, augment=False)
-    val_set   = PageCropDataset(data_path=val_data_path, split="val",   fold=fold, augment=False)
+    # Train + val: StackingCropDataset with strict n-matching.
+    # Val split in jazzmus_stacked/ has stacked samples at N=1..8 and real
+    # full-page images at N=9, so final-stage val is the ~16 real pages.
+    train_set = StackingCropDataset(data_path=data_path, split="train", fold=fold, augment=False)
+    val_set   = StackingCropDataset(data_path=data_path, split="val",   fold=fold, augment=False)
+    # Test: PageCropDataset on real pagecrop (honest full-page evaluation)
     test_set  = PageCropDataset(data_path=val_data_path, split="test",  fold=fold, augment=False)
 
     # ── vocabulary ─────────────────────────────────────────────────────────────
@@ -356,12 +391,12 @@ def train(
     num_cl_stages  = gin.query_parameter("DynamicCurriculumAdvancer.num_cl_stages")
 
     last_ckpt = ModelCheckpoint(
-        dirpath=weights_dir, filename=f"pagecrop_fold{fold}_last",
+        dirpath=weights_dir, filename=f"stacked_fold{fold}_last",
         monitor=None, save_top_k=0, save_last=True, verbose=False,
         save_on_train_epoch_end=True,
     )
     best_ckpt = ModelCheckpoint(
-        dirpath=weights_dir, filename=f"pagecrop_fold{fold}_best",
+        dirpath=weights_dir, filename=f"stacked_fold{fold}_best",
         monitor="val/ser", mode="min", save_top_k=0,
         save_last=False, verbose=True, save_on_train_epoch_end=False,
     )

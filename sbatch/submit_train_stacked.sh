@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J stacked-cl
+#SBATCH -J stacked-precomp
 #SBATCH -p ice-gpu
 #SBATCH --gres=gpu:h200:1
 #SBATCH --cpus-per-task=20
@@ -19,8 +19,11 @@ echo "Job started: $(date)"
 echo "Node: $SLURMD_NODENAME"
 nvidia-smi
 
-echo "=== Starting stacked curriculum training ==="
-python train.py \
+echo "=== Starting pre-computed stacking curriculum training ==="
+echo "  Dataset: StackingCropDataset (strict n-matching)"
+echo "  Stages 2-5: effective batch=16, lr=2e-5"
+echo "  Stages 6-9: effective batch=8,  lr=1e-5"
+python train_precomputed_stacking.py \
     --config config/stacked_precomputed_9stage.gin
 
 echo "Job finished: $(date)"
