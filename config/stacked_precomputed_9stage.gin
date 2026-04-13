@@ -27,12 +27,6 @@ StackingCropDataset.curriculum_start = 1
 StackingCropDataset.replay_ratio     = 0.25
 StackingCropDataset.epoch_size       = None
 
-# VAL/TEST DATASET (real pagecrop — masking eligibility is correct here)
-PageCropDataset.system_height    = 256
-PageCropDataset.num_cl_stages    = 9
-PageCropDataset.final_stage      = 9
-PageCropDataset.curriculum_start = 1
-
 # CURRICULUM
 DynamicCurriculumAdvancer.num_cl_stages      = 9
 DynamicCurriculumAdvancer.ser_threshold      = 25.0

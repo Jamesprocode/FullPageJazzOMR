@@ -34,7 +34,6 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from datasets.page_crop_dataset import PageCropDataset
 from datasets.stacking_crop_dataset import StackingCropDataset
 from jazzmus.curriculum.trainer import CurriculumSMTTrainer
 from jazzmus.dataset.smt_dataset import batch_preparation_img2seq
@@ -58,14 +57,13 @@ def train_hparams(
 @gin.configurable
 def train_paths(
     data_path:           str = "data/jazzmus_stacked",
-    val_data_path:       str = "data/jazzmus_pagecrop",   # real pages for fair val
     checkpoint:          str = "../ISMIR-Jazzmus/weights/smt/smt_0.ckpt",
     weights_dir:         str = "weights/stacked_precomputed",
     resume:              str = None,
     resume_stage:        int = 2,
     wandb_name:          str = None,
 ):
-    return data_path, val_data_path, checkpoint, weights_dir, resume, resume_stage, wandb_name
+    return data_path, checkpoint, weights_dir, resume, resume_stage, wandb_name
 
 
 # ── dynamic curriculum callback (no full sweep) ────────────────────────────────
@@ -248,7 +246,6 @@ def train(
     num_workers:             int   = None,
     lr:                      float = None,
     data_path:               str   = None,
-    val_data_path:           str   = None,
     checkpoint:              str   = None,
     weights_dir:             str   = None,
     resume:                  str   = None,
@@ -263,14 +260,13 @@ def train(
     gin.parse_config_file(config)
 
     gin_lr, gin_accum, gin_bs, gin_val_bs, gin_nw, gin_val_freq = train_hparams()
-    gin_data, gin_val_data, gin_ckpt, gin_wts, gin_resume, gin_resume_s, gin_wandb = train_paths()
+    gin_data, gin_ckpt, gin_wts, gin_resume, gin_resume_s, gin_wandb = train_paths()
 
     if lr is None:                      lr                      = gin_lr
     if accumulate_grad_batches is None: accumulate_grad_batches = gin_accum
     if batch_size is None:              batch_size              = gin_bs
     if num_workers is None:             num_workers             = gin_nw
     if data_path is None:               data_path               = gin_data
-    if val_data_path is None:           val_data_path           = gin_val_data
     if checkpoint is None:              checkpoint              = gin_ckpt
     if weights_dir is None:             weights_dir             = gin_wts
     if resume is None:                  resume                  = gin_resume
@@ -285,22 +281,20 @@ def train(
     print("PRE-COMPUTED STACKING CURRICULUM TRAINING")
     print(f"  Config        : {config}")
     print(f"  Checkpoint    : {checkpoint}")
-    print(f"  Train data    : {data_path}")
-    print(f"  Val data      : {data_path}  (stacked — real full pages at final stage)")
-    print(f"  Test data     : {val_data_path}  (pagecrop — real pages)")
+    print(f"  Data          : {data_path}  (train/val/test from jazzmus_stacked)")
     print(f"  Weights dir   : {weights_dir}")
     print(f"  Fold          : {fold}")
     print(f"  LR            : {lr}  |  Batch: {batch_size}  |  Accum: {accumulate_grad_batches}")
     print(f"  Start stage   : {resume_stage}  (stage 1 skipped — covered by pretrained model)")
 
     # ── datasets ───────────────────────────────────────────────────────────────
-    # Train + val: StackingCropDataset with strict n-matching.
-    # Val split in jazzmus_stacked/ has stacked samples at N=1..8 and real
-    # full-page images at N=9, so final-stage val is the ~16 real pages.
+    # All splits from jazzmus_stacked/ via StackingCropDataset:
+    #   train: stacked N=1..9 + real/syn full pages at N=9
+    #   val:   stacked N=1..8, real full pages at N=9 (~16 pages)
+    #   test:  real full pages only
     train_set = StackingCropDataset(data_path=data_path, split="train", fold=fold, augment=False)
     val_set   = StackingCropDataset(data_path=data_path, split="val",   fold=fold, augment=False)
-    # Test: PageCropDataset on real pagecrop (honest full-page evaluation)
-    test_set  = PageCropDataset(data_path=val_data_path, split="test",  fold=fold, augment=False)
+    test_set  = StackingCropDataset(data_path=data_path, split="test",  fold=fold, augment=False)
 
     # ── vocabulary ─────────────────────────────────────────────────────────────
     if resume is not None:
