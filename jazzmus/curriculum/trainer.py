@@ -44,8 +44,9 @@ class CurriculumSMTTrainer(SMT_Trainer):
         super().__init__(*args, **kwargs)
         self.current_stage: int = 2
         self._stage_calculator: Callable[[int], int] = lambda step: self.current_stage
-        self._val_sample: dict | None = None   # stores first val batch for image logging
-        self._last_logged_stage: int = -1      # track stage changes for training image log
+        self._val_sample: dict | None = None     # first val batch for image logging
+        self._train_sample: dict | None = None  # first train batch at stage change
+        self._last_logged_stage: int = -1       # track stage changes for training image log
 
     # ── lr schedule: warmup + constant ───────────────────────────────────────
 
@@ -105,19 +106,25 @@ class CurriculumSMTTrainer(SMT_Trainer):
         checkpoint["state_dict"] = filtered
 
     def training_step(self, batch, batch_idx):
-        loss = super().training_step(batch, batch_idx)
+        # Compute loss directly — skip parent's training_step to avoid
+        # logging a wandb Table + stacked image for every batch_idx==0.
+        loss = self.compute_loss(batch)
+        x = batch[0]
+        self.log("train/loss", loss, on_epoch=True, batch_size=x.shape[0], prog_bar=True)
 
         stage = self._stage_calculator(self.current_epoch)
         self.log("curriculum/stage", float(stage), on_step=True, prog_bar=True)
 
-        # Log a training sample image whenever the curriculum stage changes.
+        # Log a single training sample image only when the stage changes.
         if batch_idx == 0 and stage != self._last_logged_stage:
             self._last_logged_stage = stage
-            x = batch[0]
-            img_np = x[0].squeeze().cpu().numpy()
+            self._train_sample = {
+                "img": x[0].squeeze().cpu().numpy(),
+                "path": batch[3][0],
+            }
             self.logger.experiment.log({
                 "curriculum/train_input": wandb.Image(
-                    img_np,
+                    self._train_sample["img"],
                     caption=f"stage={stage}  epoch={self.current_epoch}",
                 ),
             })
@@ -129,16 +136,12 @@ class CurriculumSMTTrainer(SMT_Trainer):
         loss = self.compute_loss(batch)
         self.log("val/loss", loss, on_epoch=True, batch_size=x.shape[0], prog_bar=True)
 
-        # Store first batch image for prediction table logging
+        # Store first val batch image for epoch-end logging
         if batch_idx == 0:
-            self._val_sample = {"x": x[0].squeeze().cpu().numpy(),
+            self._val_sample = {"img": x[0].squeeze().cpu().numpy(),
                                 "path": path_to_images[0]}
 
         # Cap greedy-decode steps proportionally to the current curriculum stage.
-        # model.maxlen is sized for the worst case (5 stacked systems + 10 % buffer).
-        # At stage 2 the GT is only ~2/5 of that length, so decoding to the full
-        # maxlen wastes ~3× the time.  We cap at (stage × 550) tokens which gives
-        # generous headroom (~50 % above the expected per-system token count of ~346).
         stage = int(self._stage_calculator(self.current_epoch))
         capped_maxlen = min(self.model.maxlen, max(512, stage * 550))
         old_maxlen = self.model.maxlen
@@ -198,20 +201,38 @@ class CurriculumSMTTrainer(SMT_Trainer):
         # Chord metrics must be computed before super() clears self.preds / self.grtrs
         self._log_chord_metrics(self.preds, self.grtrs, step="val")
 
-        # Log val prediction sample for the first val batch
+        # Log one combined panel: val sample image + prediction, train sample image
+        stage = int(self._stage_calculator(self.current_epoch))
+        log_dict = {}
+
         if self._val_sample is not None and self.preds:
-            stage = int(self._stage_calculator(self.current_epoch))
-            self.logger.experiment.log({
-                "val/prediction_sample": wandb.Html(
-                    f"<b>Stage:</b> {stage}  <b>Epoch:</b> {self.current_epoch}<br>"
-                    f"<b>Path:</b> {self._val_sample['path']}<br><br>"
-                    f"<b>Prediction:</b><pre>{self.preds[0]}</pre>"
-                    f"<b>Ground Truth:</b><pre>{self.grtrs[0]}</pre>"
-                )
-            })
+            log_dict["curriculum/val_sample"] = wandb.Image(
+                self._val_sample["img"],
+                caption=f"val  stage={stage}  {self._val_sample['path']}",
+            )
+            log_dict["curriculum/val_prediction"] = wandb.Html(
+                f"<b>Stage:</b> {stage}  <b>Epoch:</b> {self.current_epoch}<br>"
+                f"<b>Path:</b> {self._val_sample['path']}<br><br>"
+                f"<b>Prediction:</b><pre>{self.preds[0]}</pre>"
+                f"<b>Ground Truth:</b><pre>{self.grtrs[0]}</pre>"
+            )
             self._val_sample = None
 
-        super().on_validation_epoch_end()
+        if hasattr(self, "_train_sample") and self._train_sample is not None:
+            log_dict["curriculum/train_sample"] = wandb.Image(
+                self._train_sample["img"],
+                caption=f"train  stage={stage}  {self._train_sample['path']}",
+            )
+
+        if log_dict:
+            self.logger.experiment.log(log_dict)
+
+        # Call parent — logs metrics + clears preds/grtrs.
+        # Skip parent's table/HTML logging by calling compute_log_metrics directly
+        # and clearing preds/grtrs ourselves.
+        self.compute_log_metrics(self.preds, self.grtrs, step="val")
+        self.preds = []
+        self.grtrs = []
 
     def on_test_epoch_end(self):
         self._log_chord_metrics(self.preds, self.grtrs, step="test")

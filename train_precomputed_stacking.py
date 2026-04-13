@@ -317,15 +317,11 @@ def train(
     print(f"  Test samples  : {len(test_set.samples)}")
     print(f"  Vocab size    : {train_set.vocab_size()}")
 
-    # ── model sizing ───────────────────────────────────────────────────────────
-    print("\nComputing max H×W…")
-    train_h, train_w = train_set.get_max_hw()
-    val_h,   val_w   = val_set.get_max_hw()
-    max_height = max(train_h, val_h)
-    max_width  = max(train_w, val_w)
-    max_len    = int(max(train_set.get_max_seqlen(), val_set.get_max_seqlen()) * 1.1)
-    print(f"  Max H×W    : {max_height} × {max_width}")
-    print(f"  Max seqlen : {max_len}")
+    # ── model sizing (pre-computed, stable across runs) ─────────────────────────
+    max_height = 2304   # 9 stages × 256 system_height
+    max_width  = 5860   # widest image after aspect-ratio resize
+    max_len    = 1982   # longest GT sequence × 1.1
+    print(f"\n  Model dims : {max_height} × {max_width}, seqlen {max_len}")
 
     # ── load pretrained checkpoint ─────────────────────────────────────────────
     print(f"\nLoading checkpoint: {checkpoint}")
