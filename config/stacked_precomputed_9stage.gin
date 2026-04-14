@@ -15,8 +15,8 @@
 train_paths.data_path            = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_stacked"
 train_paths.checkpoint           = "/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
 train_paths.weights_dir          = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/stacked_precomputed_9stage"
-train_paths.resume               = None
-train_paths.resume_stage         = 2
+train_paths.resume               = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/stacked_precomputed_9stage/last.ckpt"
+train_paths.resume_stage         = 7
 train_paths.wandb_name           = "stacked_precomputed_9stage_fold0"
 
 # TRAIN DATASET (stacking: strict n-matching, no maxed-out logic)
