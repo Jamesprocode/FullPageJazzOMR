@@ -24,7 +24,7 @@
 % Title. Please use IEEE-compliant title case when specifying the title here,
 % as it has implications for the copyright notice
 % ------
-\title{Full Page OMR on Handwritten Jazz Lead Sheet}
+\title{Optical Music Recognition of  Jazz Lead Sheets}
 
 % Note: Please do NOT use \thanks or a \footnote in any of the author markup
 
@@ -58,8 +58,10 @@ Optical Music Recognition (OMR) systems have advanced rapidly in recent years, e
 
 Transformer-based architectures such as the Sheet Music Transformer (SMT) have recently demonstrated state-of-the-art performance in printed classical contexts \cite{rios-vila_sheet_2024}, and system-level adaptations for jazz lead sheets show promising results on pre-segmented staff images \cite{martinez-sevilla_optical_2025}. Yet, full-page handwritten jazz recognition remains largely unexplored, particularly with respect to harmonic structure and the preservation of page-level layout.
 
-We present the first full-page OMR system for handwritten jazz lead sheets, adapting SMT with a curriculum learning strategy that progressively trains the model from single-system inputs up to complete pages.
-To compare this full page training strategy, we construct a detect-and-concatenate pipeline as a full-page comparison baseline and introduce two chord-oriented metrics (Root SER and Chord SER) to evaluate harmonic transcription quality that standard token-level metrics obscure.
+Chord symbol recognition is the defining challenge of this domain and is fundamentally different from the symbol recognition problems studied in OMR. In jazz, the chord symbols carry the harmonic structure of a song that performers are expected to realize, and any downstream use of a transcribed lead sheet (transposition, search, analysis, accompaniment) depends on correct harmonic content. Yet chord symbols are also the hardest part of the page to read: they are handwritten in shorthand that varies across writers (e.g., \texttt{C$\triangle$7}, \texttt{Cmaj7}, and \texttt{CM7} denote the same chord), they are positioned loosely above the staff rather than aligned to any fixed grid, and they frequently form progressions, like a ii--V--I, that extend across systems. System-level recognition can limit the model’s ability to capture harmonic structures that unfold across multiple systems. Full-page recognition is therefore not just an engineering convenience; by exposing the model to the entire page, it provides an opportunity to leverage broader harmonic context, allowing chord predictions to be informed by surrounding material, and ultimately produce transcriptions that better preserve the structural coherence of a lead sheet.
+
+In this study, We present the first full-page OMR system for handwritten jazz lead sheets, adapting SMT with a curriculum learning strategy that progressively trains the model from single-system inputs up to complete pages. By presenting the entire page simultaneously, the model can condition each prediction on a broader spatial and harmonic context, creating the conditions to learn cross-system dependencies such as chord progressions that span line breaks. Experiments show that this full-page approach yields substantial improvements in structural and harmonic transcription over system-level recognition, with the largest gains in line-level accuracy and chord recognition.
+Additionally, we construct a detect-and-concatenate baseline for full-page comparison and introduce two chord-oriented evaluation metrics to assess harmonic transcription quality.
 
 \section{Related Work}
 The field of Optical Music Recognition (OMR) research explores computational methods to transcribe images of musical scores to symbolic data (e.g., humdrum, MusicXML, or MEI) \cite{calvo-zaragoza_understanding_2021}. The methodology of OMR has evolved from rule-based, segment detection pipelines to modern deep learning systems. In 2001, early approaches decomposed recognition into staff detection, symbol segmentation, symbol classification, and symbolic reconstruction using statistical or handcrafted features \cite{bainbridge2001challenge}. Later research follows two methodological approaches for full-page transcription. The first focuses on notation object retrieval, where OMR is formulated as a detection problem. These systems locate individual musical primitives before assembling them into a structured representation \cite{devega2022omr,hartelt2022medieval}. The second approach adopts a end-to-end deep learning system: models directly generate a symbolic sequence from the input image without explicit segmentation \cite{alfaro-contreras2023homophonic,rios-vila_sheet_2024}.
@@ -67,29 +69,27 @@ The field of Optical Music Recognition (OMR) research explores computational met
 Both of these methods have faced two major problems: handwritten score recognition and piano polyphonic transcription. In tackling the handwritten score recognition challenge, deep learning systems have advanced the classical sequence-learning systems:
 In 2019, Baró proposed a full HMR (Handwritten Music Recognition) system driven by Convolutional Recurrent Neural Networks \cite{baro_optical_2019}. His appoarch emphasizes data augmentation and transfer learning to cope with handwriting variability, thereby moving beyond stage-specific detectors toward holistic recognition. Concurrent work by Calvo-Zaragoza applied CRNN-CTC to handwritten music notation, decreasing the symbol-level error rate from the baseline for handwritten Mensural notation \cite{calvo-zaragoza_handwritten_2019}. For the problem of polyphonic piano music, Mayer et al. argue that inconsistent symbolic ground truth results in meaningless evaluation and introduce Linearized MusicXML (LMX) to provide a stable, lossless text target for end-to-end models \cite{mayer_practical_2024}. Rios-Vila et al. introduce the Sheet Music Transformer (SMT), an autoregressive image-to-sequence model that directly emits Humdrum **kern encodings, positioning itself as the first end-to-end OMR to tackle complex polyphonic structures\cite{rios-vila_sheet_2024}. 
 
-Unlike classical polyphonic scores, jazz lead sheets pair a monophonic melody with chord symbols, creating a structure and vocabulary not yet addressed by most OMR systems. Handwritten lead sheets introduce additional challenges such as irregular spacing, ambiguous chord positioning, and informal notation. Martínez-Sevilla et al. present the first dataset and system for jazz lead sheet recognition, proposing a system-level SMT adaptation that transcribes pre-segmented staff images~\cite{martinez-sevilla_optical_2025}. This raises two open questions that motivate the present work: whether extending recognition to the full-page setting, where the model sees all systems jointly, yields measurable gains over processing each system in isolation, and how to evaluate harmonic transcription quality that standard metrics do not expose.
+Unlike classical polyphonic scores, jazz lead sheets combine a monophonic melody with chord symbols, introducing a structure and vocabulary that remain underexplored in OMR. Martínez-Sevilla et al. present the first dataset and system for this task, adapting SMT to transcribe pre-segmented staff images~\cite{martinez-sevilla_optical_2025}. While recent work begins to address this domain, evaluating harmonic transcription quality remains challenging, as standard OMR metrics do not fully capture the role of chord symbols. At the same time, the system-level formulation leaves open how models can learn relationships that extend beyond individual systems, particularly for harmonic structures such as chord progressions that span line breaks. In this work, we investigate full-page recognition as a means to expose broader structural and harmonic context across systems.
 
 \section{Methodology}
-To investigate these questions, we adapt SOTA SMT model to take a full page as input and directly produce a complete humdrum transcription spanning all systems, without any intermediate segmentation step. Given a grayscale scan of a full page of music, the goal is to produce a complete humdrum transcription that encodes both the melodic content and the chord symbols. Figure~\ref{fig:flowchart} illustrates the overall pipeline, contrasting the detect-and-concatenate baseline with the two curriculum learning approaches.
+To investigate these questions, we adapt Shee Music Transformer(SMT) model to take a full page as input and directly produce a complete humdrum transcription spanning all systems, without any intermediate segmentation step. Given a grayscale scan of a full page of music, the goal is to produce a complete humdrum transcription that encodes both the melodic content and the chord symbols.
 
-\begin{figure*}[t]
-\centering
-\includegraphics[width=\textwidth]{flowchart.png}
-\caption{Overview of the three approaches evaluated in this work. The \textit{baseline} pipeline uses YOLO to detect individual systems, transcribes each with a pretrained system-level SMT, and concatenates predictions. The \textit{masking} and \textit{stacking} curricula progressively train a full-page SMT model on inputs of increasing length, differing in how multi-system training images are constructed.}
-\label{fig:flowchart}
-\end{figure*}
 
 \subsection{Dataset}
-We adopt the Jazzmus dataset~\cite{martinez-sevilla_optical_2025}, a collection of jazz lead sheets consisting of handwritten and synthetic scores aligned with kern and MusicXML encodings. The dataset provides two levels of granularity: individual staff system crops (1,688 train / 105 val / 228 test) and complete full-page scans (245 train / 16 val / 32 test). The synthetic portion contributes 326 full-page renderings generated using MuseScore with two font styles (Classical and MuseJazz) to approximate real-world variability. The handwritten portion includes 293 pages (163 unique works) produced by jazz professionals and students who manually copied the sythetic scores. All multiple copies of the same piece are restricted to the training set, preventing leakage of identical musical content across splits.
+We adopt the Jazzmus dataset~\cite{martinez-sevilla_optical_2025}, a collection of jazz lead sheets consisting of handwritten and synthetic scores aligned with Humdrum and MusicXML encodings. The dataset provides two versions: individual staff system crops (1,688 train / 105 val / 228 test) and complete full-page scans (245 train / 16 val / 32 test). The synthetic portion includes 326 full-page renderings (with its system level version) generated using MuseScore with two font styles (Classical and MuseJazz) to approximate real-world variability. The handwritten portion includes 293 pages (163 unique works) produced by jazz professionals and students who manually copied the synthetic lead sheets. All multiple copies of the same piece are restricted to the training set, preventing leakage of identical musical content across splits.
 
+The Jazzmus annotations are derived from MusicXML-to-Humdrum \texttt{**kern} conversion, and we apply a data cleaning to improve consistency for training. First, chord symbols in the \texttt{**mxhm} spine that were occasionally represented as comment instead of chord annotations, which makes the model ignore those chords. Second, for the synthetic subset, we correct system-level bounding boxes to ensure that each staff crop consistently includes the corresponding chord annotations above the staff. These refinements are contributed back to the dataset though submitting hugging face pull request. Additionally, the handwritten portion reflects natural variation introduced during manual copying of lead sheets. Minor discrepancies, such as differences accidentals and slur markings, may appear between the image and the symbolic annotation. We retain these variations as part of the dataset, as they provide a realistic setting for evaluating model robustness to handwritten input.
+
+
+% should this be discussed here? or leave to the later curriculum training stragety to explain
 To train the full-page model, we investigate two data preparation strategies for curriculum learning.
 In the masking approach, each full page is prepared as a set of progressive crops containing the top $N = 1, \ldots, 9$ systems, so the model is trained on real page content of increasing length.
 In the stacking approach, a synthetic training set is generated offline by vertically concatenating $N$ randomly selected system images into a single multi-system image, for $N = 1, \ldots, 9$, providing greater training diversity by combining systems from different pieces.
 
-Ground-truth files for any multi-system image are assembled by concatenating per-system annotations: the first system retains the file header and spine declarations; subsequent systems have their headers stripped and are joined with \texttt{!!linebreak:original} separators; the final system retains the spine terminators (\texttt{*-}). This assembly convention is consistent across all dataset components and is applied identically during data preparation, training, and evaluation.
+For multi-system inputs, ground-truth files are assembled by concatenating per-system annotations. The first system retains the file header and spine declarations, subsequent systems have their headers removed, and systems are joined using \texttt{!!linebreak:original} separators. The final system retains the spine terminators (\texttt{*-}). This convention is applied consistently across data preparation, training, and evaluation.
 
 \subsection{Model Architecture}
-We adopt the Sheet Music Transformer (SMT)~\cite{rios-vila_sheet_2024} as our base model. The Sheet Music Transformer follows an encoder-decoder paradigm common in sequence-to-sequence tasks. The encoder processes the input image through ConvNeXt, a modernized convolutional neural network that extracts hierarchical visual features. Given a grayscale input image, the encoder produces a spatial feature map that captures local patterns such as note heads, stems, beams, and staff lines. To preserve spatial relationships in this feature representation, a two-dimensional sinusoidal positional encoding is added, allowing the model to reason about the relative positions of musical elements.The decoder generates the output sequence autoregressively, producing one token at a time conditioned on previously generated tokens and the encoded image features. Each token first passes through an embedding layer that maps discrete vocabulary indices to continuous vector representations. A one-dimensional positional encoding is added to these embeddings. The core of the decoder consists of eight Transformer layers, each containing masked self-attention over the generated sequence and cross-attention between the sequence and encoder features. This cross-attention mechanism allows each generated token to attend to relevant regions of the input image. Finally, an output projection layer maps the decoder hidden states to probability distributions over the vocabulary, enabling the model to predict the next token. The model is trained end-to-end using cross-entropy loss with teacher forcing, where ground truth tokens are provided as input during training. To adapt SMT to the full-page setting, we extend the output projection layer to include a \texttt{<linebreak>} token, which the decoder learns to emit at system boundaries and is mapped back to \texttt{!!linebreak:original} during detokenization.
+We adopt the Sheet Music Transformer (SMT)~\cite{rios-vila_sheet_2024}, an encoder–decoder architecture for image-to-sequence music transcription. SMT uses a convolutional encoder (ConvNeXt) to extract visual features from the input image and a Transformer decoder to autoregressively generate a Humdrum token sequence via cross-attention. To adapt SMT to the full-page setting, we extend the output vocabulary with a \texttt{<linebreak>} token, allowing the model to explicitly represent system boundaries and generate multi-system transcriptions.
 
 
 \subsection{Baseline: System-Level Recognition with YOLO Segmentation}
@@ -97,7 +97,7 @@ To establish a full-page comparison point, we construct a detect-and-concatenate
 This pipeline is designed for this paper to measure how far a detect-and-concatenate approach can go without any page-level training.
 
 \subsubsection{Staff Segmentation}
-Page images are first de-skewed using Hough line detection on near-horizontal staff lines to estimate and correct rotations.
+Page images are first preprocessed with resize and de-skewed method to correct size and rotations.
 We adopt YOLO detector~\cite{dvorak2024staff} fine-tuned on the music staff-detection task then detect bounding boxes for each staff system.
 Raw detections are post-processed in three steps.
 First, the raw detection boxes only cover the staff lines and notes, leaving chord symbols that appear above the staff uncaptured; to address this, non-overlapping crop boundaries are extended by splitting each inter-system gap 75/25, allocating the larger share upward so that chord notation above each staff is fully included in the crop.
@@ -116,31 +116,36 @@ To bridge the gap between the system-level model and full-page recognition, we i
 
 \subsubsection{Masking Curriculum}
 
-For each full-page scan, we derive $N$ training crops by retaining only the top $N$ systems and cropping away the rest, for $N = 1, \ldots, 9$. We use 9 stages because most pages in the dataset contain 7--8 systems; although some pages reach up to 11 systems, pages with 9 or more systems are rare enough that stages 9--11 are merged into a single final stage.
-This creates a natural progression of difficulty: the 1-system crop is identical to a standard system-level input, while each subsequent crop adds one more system, exposing the model to progressively longer and more complex page-level sequences.
-The 245 real and 278 synthetic full-page training scans each contribute up to 9 crops, yielding a total of 4,707 training crop entries across all stages.
-Validation uses 16 real full-page scans processed the same way.
-At curriculum stage $k$, only crops with $N \leq k$ are eligible for sampling; the stage advances automatically when validation SER falls below 20\% for 5 consecutive validation epochs.
-At the final stage ($k = 9$), each page contributes its full crop, and training continues until early stopping triggers after 10 epochs without improvement.
-When advancing from stage $k-1$ to $k$, the model risks forgetting of shorter inputs it was trained on earlier.
-To verify this, we perform a full-sweep validation at the end of each stage, evaluating the model on all stage datasets rather than only the current one; when training at each stage is restricted to only crops of the current system count, performance on shorter inputs degrades as the curriculum advances, confirming forgetting of previous stage training.
-To mitigate this, we apply experience replay: a fraction $r$ of samples from each prior stage $s < k$ is randomly drawn and added to the current training pool, where for stage $s$ we sample $\max(1, \lfloor r \cdot |\mathcal{D}_s| \rfloor)$ items.
-We evaluate $r \in \{0, 0.25, 0.50, 1.00\}$.
+The masking curriculum starts from the pretrained system-level SMT checkpoint and progressively exposes it to longer page excerpts drawn from real full-page scans.
+For each full-page scan, we derive a family of training crops by retaining only the top $N$ systems and cropping away the rest, for $N = 1, \ldots, 9$.
+The 1-system crop is identical to a standard system-level input, while each subsequent crop adds one more system, creating a natural progression of difficulty that exposes the model to progressively longer and more complex page-level sequences.
+We use 9 stages because most pages contain 7--8 systems; pages with 9 or more systems are rare enough that stages 9--11 are merged into a single final stage.
+The corresponding ground-truth sequence for each $N$-system crop is assembled by concatenating per-system annotations using the header-stripping and \texttt{!!linebreak:original} separator convention described in the dataset section.
+
+Training proceeds through the curriculum in sequential stages.
+At stage $k$, only crops with $N \leq k$ are eligible for sampling, so each stage introduces one additional system beyond the previous stage's maximum.
+The stage advances automatically once the validation SER falls below a fixed threshold for a number of consecutive validation epochs, ensuring that the model has adequately learned the current input length before moving on.
+At the final stage ($k = 9$), each page contributes its full crop and training continues under an early-stopping criterion until validation no longer improves.
+
+A direct consequence of this staged training regime is that when the distribution shifts from stage $k-1$ to stage $k$, samples from earlier stages disappear from the loss entirely, and the model can catastrophically forget shorter-input behavior it previously learned.
+To mitigate this, we apply experience replay: at stage $k$, a fraction $r$ of samples from each prior stage $s < k$ is randomly drawn and added to the current training pool, where for stage $s$ we sample $\max(1, \lfloor r \cdot |\mathcal{D}_s| \rfloor)$ items.
+The replay ratio $r$ thus controls the tradeoff between specialization to the current stage and retention of prior stages; its effect is studied as an ablation in Section~\ref{sec:results}.
 
 \subsubsection{Stacking Curriculum}
 
+The stacking curriculum removes the dependency on pre-existing multi-system page crops by synthesizing multi-system training images directly from the much larger pool of individual system crops.
+For each stage $N = 2, \ldots, 9$, a training image is constructed by vertically stacking $N$ individual system images: a random anchor system is drawn from the training set, and $N-1$ additional systems are sampled from its width-compatible pool so that the resulting composite is geometrically consistent.
+All selected systems are resized to a uniform height with aspect ratio preserved, padded to a common width, and vertically concatenated into a single image.
+The corresponding ground-truth sequence is assembled by concatenating per-system annotations following the header-stripping and \texttt{!!linebreak:original} separator convention described in the dataset section.
+Because any combination of width-compatible systems can be stacked, this construction yields a combinatorially much larger set of unique $N$-system examples than the masking curriculum, which is bounded by the number of real pages.
 
-The stacking curriculum removes the dependency on pre-existing multi-system page crops.
-Instead of masking a real page, we construct a multi-system image by vertically stacking $N$ randomly selected individual system images. For stage $N = 1$, we load the system level dataset directly. For each stage $N = 2, \ldots, 9$, a random anchor system is drawn from the training set and $N-1$ additional systems are sampled from its width-compatible pool.
-All selected systems are resized to a uniform height of 256\,px with aspect ratio preserved, padded to a common width, and vertically concatenated into a single image.
-The corresponding ground-truth file is assembled by concatenating per-system annotations following the header-stripping and adding line-break notation convention described in the dataset section.
-Stage $N = 1$ requires no stacking; the 1,688 real and 1,872 synthetic system-level entries from the Jazzmus dataset are used directly.
-For stages $N = 2, \ldots, 9$ we generate 1,688 real-stacked and 1,872 synthetic-stacked images per stage, maintaining real-to-synthetic balance throughout.
-At the final stage ($N = 9$), the 245 real and 278 synthetic full-page images are appended, exposing the model to authentic full-page layout at the curriculum's conclusion.
+Training proceeds through the same staged advancement mechanism as the masking curriculum: stage $N$ restricts sampling to stacks of at most $N$ systems, advances when the validation SER threshold is met, and applies experience replay from prior stages to mitigate catastrophic forgetting.
+Stage $N = 1$ requires no stacking: the system-level entries from Jazzmus are used directly, which also allows the model to be trained from scratch on genuine system-level data before progressing to stacked compositions.
+At the final stage ($N = 9$), real full-page scans are appended to the training pool so that the model observes authentic page-level layout, closing the gap between the synthetically stacked training distribution and the real full-page test distribution.
 
 \subsection{Evaluation Metrics}
 
-We report five metrics, all computed as Levenshtein edit-distance rates (lower is better).
+We report five metrics, all computed as Levenshtein edit-distance error rates.
 Following standard OMR practice, we report Character Error Rate (CER), Symbol Error Rate (SER), and Line Error Rate (LER), which measure recognition accuracy at the character, symbol, and row levels respectively.
 These three metrics are also computed on the **kern spine only, isolating note-level transcription quality from chord recognition so that melodic and harmonic errors can be assessed independently.
 SER is additionally used as the primary signal for curriculum stage advancement.
@@ -157,24 +162,35 @@ Both metrics are computed at the page level by pooling edit-distance counts acro
 
 \section{Experimental Setup}
 
-All experiments are evaluated on the 32-page full-page test set.
-The baseline requires no training; it applies the pretrained system-level SMT checkpoint directly to YOLO-detected crops and evaluates the concatenated output.
+All experiments are evaluated on the 32-page full-page test set and run on a single NVIDIA H200 GPU with BF16 mixed precision.
 
-The masking curriculum trains on the 4,707 page crop entries (245 real + 278 synthetic full-page scans, each contributing up to 9 crops) and validates on the corresponding 288 validation crops.
-SMT is initialized from the pretrained system-level checkpoint with the output head extended to include the \texttt{<linebreak>} token, and optimized with AdamW ($lr = 5 \times 10^{-6}$, batch size 1, cosine schedule, 150 warmup steps), with validation every 10 epochs.
-We run four replay ratio variants: $r \in \{0, 0.25, 0.50, 1.00\}$.
+\subsection{Baseline}
+The baseline requires no training; it applies the pretrained system-level SMT checkpoint directly to YOLO-detected crops and concatenates the per-system predictions into a full-page output.
 
-The stacking curriculum trains on 32,563 synthetically assembled multi-system images across stages $N = 1, \ldots, 9$ and validates on 856 entries.
-SMT is trained from scratch ($lr = 5 \times 10^{-5}$, batch size 8) and replay ratio $r = 0.25$.
+\subsection{Masking Curriculum}
+The 245 real and 278 synthetic full-page training scans each contribute up to 9 crops, yielding 4,707 training entries; validation uses the corresponding 288 crops from 16 real full-page scans.
+SMT is initialized from the pretrained system-level checkpoint with the output head extended to include the \texttt{<linebreak>} token, and optimized with AdamW ($lr = 5 \times 10^{-6}$, 150 warmup steps), with validation every 10 epochs.
+A batch size of 8 is used for stages 1--8; at stage 9, the batch size is reduced to 1 due to GPU memory constraints imposed by full-page inputs.
+The stage-advancement SER threshold is set to 20\% with a patience of 5 consecutive validation epochs; at the final stage, early stopping triggers after 10 epochs without improvement.
+To study the effect of experience replay, we run four variants with replay ratio $r \in \{0, 0.25, 0.50, 1.00\}$.
 
-All experiments run on a single NVIDIA H200 GPU with BF16 mixed precision, provided by the Partnership for an Advanced Computing Environment (PACE) at the Georgia Institute of Technology (RRID:SCR\_027619).
+\subsection{Stacking Curriculum}
+For stage $N = 1$, the 1,688 real and 1,872 synthetic system-level entries from Jazzmus are used directly.
+For stages $N = 2, \ldots, 9$, we generate 1,688 real-stacked and 1,872 synthetic-stacked images per stage (system height 256\,px), maintaining real-to-synthetic balance throughout, yielding 32,563 training entries across all stages with 856 validation entries.
+At stage 9, the 245 real and 278 synthetic full-page images are additionally appended to the training pool.
+SMT is trained from scratch ($lr = 1 \times 10^{-5}$, batch size 8) with replay ratio $r = 0.25$, a stage-advancement SER threshold of 25\% with a patience of 3 validation epochs, and a final-stage early-stopping patience of 10.
+To maximize throughput on smaller inputs, gradient accumulation of 2 is applied for stages 2--5 (effective batch size 16), reverting to batch size 8 for stages 6--8.
 
 
 
 \section{Results}
+\label{sec:results}
 
-\subsection{Full-Page Test Performance}
+\subsection{Baseline}
 
+The detect-and-concatenate baseline achieves 13.55\% CER, 12.78\% SER, and 32.35\% LER on the 32-page test set (Table~\ref{tab:overall}).
+While token-level accuracy is reasonable, the high LER indicates that structural errors accumulate when independently transcribed systems are concatenated without shared positional context.
+Spine-specific evaluation (Table~\ref{tab:spine}) reveals that chord recognition is disproportionately difficult: the baseline achieves 14.40\% kern SER but 47.82\% Chord SER and 29.17\% Root SER, confirming that harmonic symbols pose a greater challenge than melodic content.
 
 \begin{table}[t]
 \centering
@@ -192,16 +208,16 @@ Stacking              & \multicolumn{3}{c}{\textit{pending}} \\
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:overall} compares the three full-page approaches on overall edit-distance error rates.
-The masking curriculum with full replay ($r=1.00$) yields only modest improvements on CER (13.32\% vs.\ 13.55\%) and SER (12.50\% vs.\ 12.78\%), suggesting that token-level transcription quality is already well captured by the system-level baseline.
-However, LER drops substantially from 32.35\% to 23.15\%, indicating that full-page training better preserves structural layout across system boundaries.
-We explore the implications of this pattern further in the discussion (Section~\ref{sec:discussion}).
+\subsection{Masking Curriculum}
 
-To disentangle melodic from harmonic improvements, Table~\ref{tab:spine} reports spine-specific metrics across all masking replay variants, isolating melodic transcription quality (\texttt{**kern} spine) from harmonic recognition (\texttt{**mxhm} spine).
-Without replay ($r=0$), kern-only CER and SER degrade relative to the baseline (17.20\% vs.\ 11.96\% and 18.39\% vs.\ 14.40\%).
+Table~\ref{tab:spine} reports spine-specific metrics across all four replay variants.
+Without replay ($r=0$), kern-only CER and SER degrade relative to the baseline (17.20\% vs.\ 11.96\% and 18.39\% vs.\ 14.40\%), indicating that na\"ive curriculum training without replay causes catastrophic forgetting.
 However, even without replay, kern-only LER remains comparable to the baseline (26.62\% vs.\ 26.66\%), suggesting that structural line-level accuracy is preserved even when token-level quality suffers.
+Performance improves monotonically with increasing replay ratio.
 With full replay ($r=1.00$), kern-only metrics improve across the board: CER drops to 11.63\%, SER to 13.02\%, and LER to 18.67\%, all surpassing the baseline.
 The largest relative gains appear in the chord-specific metrics: Chord SER falls by 35.9\% (47.82\% to 30.67\%) and Root SER by 27.2\% (29.17\% to 21.25\%) compared to the baseline, confirming that page-level harmonic context is particularly informative for chord quality and extension disambiguation.
+
+On the overall metrics (Table~\ref{tab:overall}), the masking curriculum with full replay yields modest improvements on CER (13.32\% vs.\ 13.55\%) and SER (12.50\% vs.\ 12.78\%), but LER drops substantially from 32.35\% to 23.15\%.
 The contrast between modest CER/SER improvements and substantial gains in LER and chord metrics suggests that the primary benefit of full-page training lies in structural coherence across line boundaries and harmonic context, rather than finer-grained symbol recognition.
 
 \begin{table}[t]
@@ -228,7 +244,7 @@ Stacking              & \multicolumn{5}{c}{\textit{pending}} \\
 }
 \end{table}
 
-\subsection{Curriculum Stage Validation Comparison}
+\subsubsection{Effect of Experience Replay}
 
 \begin{figure}[b]
 \centering
@@ -242,6 +258,10 @@ Without replay, SER rises sharply from S4 to S6, peaking at approximately 27\%, 
 With 25\% and 50\% replay the curve is substantially flatter, though mid-stage performance still degrades relative to earlier stages.
 At 100\% replay, SER remains stable throughout all nine stages and converges to the lowest value at S9.
 The monotonic relationship between replay ratio and stage-level stability directly explains the test-set trends in Table~\ref{tab:spine}: higher replay produces not only better final performance but more consistent learning throughout the curriculum.
+
+\subsection{Stacking Curriculum}
+
+Results for the stacking curriculum are pending and will be reported upon completion.
 
 
 \section{Discussion}
@@ -287,19 +307,27 @@ The masking curriculum with full experience replay ($r=1.00$) outperforms the ba
 A key insight is that experience replay is not merely helpful but necessary: without it, curriculum training degrades performance relative to the baseline, and error rates decrease monotonically as more prior-stage data is retained.
 The introduction of chord-specific evaluation metrics (Root SER and Chord SER) also proved valuable, surfacing harmonic recognition errors that aggregate token-level metrics systematically understate.
 
-This work required substantial data engineering prior to model training.
-The Jazzmus annotations were originally produced by converting MusicXML scores to Humdrum \texttt{**kern} format, a process that introduced systematic artifacts: chord symbols in the \texttt{**mxhm} spine were sometimes encoded as plain staff text rather than structured chord notation, requiring a dedicated conversion pass to restore the correct chord token format before training.
-Additionally, the handwritten scores in the dataset were produced by students copying lead sheets by hand, and as such they contain copying errors (wrong notes, missing accidentals, omitted chord extensions) that are faithfully reproduced in the handwritten images but are absent from the kern ground truth derived from the original printed source.
-This annotation-performance mismatch represents an irreducible noise floor that evaluation metrics cannot distinguish from genuine model errors, and it likely inflates reported error rates for all systems.
-Disentangling transcription errors from annotation inconsistencies is an important direction for future work.
+As noted in Section~3.1, the annotation-performance mismatch introduced by the data cleaning process represents an irreducible noise floor; disentangling transcription errors from annotation inconsistencies is an important direction for future work.
 
 More broadly, data scarcity remains the primary bottleneck: the Jazzmus dataset contains only 293 handwritten pages, limiting both training diversity and evaluation reliability.
 A natural next step is to construct a larger corpus by re-engraving standards from the Real Book with kern annotations and collecting corresponding handwritten copies, which would provide both greater scale and cleaner ground truth.
 Existing kern-encoded jazz corpora such as the Charlie Parker Omnibook transcriptions used in~\cite{baker_idiomaticism_2016} could serve as a starting point for building such a resource.
 Finally, vision-language models (VLMs) pretrained on large-scale image-text data offer a promising alternative to training OMR systems from scratch; exploring transfer learning from VLMs to music score recognition could reduce the dependence on domain-specific annotated data and improve generalization to unseen handwriting styles.
 
+\section{Acknowledgements}
+This work used the Partnership for an Advanced Computing Environment (PACE) at the Georgia Institute of Technology (RRID:SCR\_027619).
+
 % For BibTeX users:
 \bibliography{OMR}
 
 
 \end{document}
+
+
+% some notes about the lerch meeting:
+% flow chart can be two different thing with one on baseline inference and the other on training
+% think about the maybe construct the replay ratio as a ablation or differenet experiment
+% maybe some of the data prep can be in the experiment setup section
+% Pace acknoleagement goes to acknowleagemenbt section
+% maybe bar graph for the tables?
+% discussion and result think about that 
