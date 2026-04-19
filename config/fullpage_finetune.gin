@@ -1,0 +1,33 @@
+# ── Full-page fine-tune: single-stage, no curriculum ─────────────────────────
+# Starts from the final stacking checkpoint and continues training on real
+# + synthetic full-page images.  Early-stops on val/loss.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# PATHS
+train_paths.data_path     = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_fullpage"
+train_paths.syn_data_path = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_fullpage_syn"
+train_paths.checkpoint    = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/stacked_precomputed_9stage/last.ckpt"
+train_paths.weights_dir   = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/fullpage_finetune"
+train_paths.wandb_name    = "fullpage_finetune_fold0"
+
+# DATASET
+FullPageDataset.system_height = 256
+
+# FINE-TUNE PARAMS
+finetune_params.patience = 10      # val epochs without val/loss improvement
+finetune_params.stage    = 9       # final curriculum stage of the loaded ckpt
+
+# MODEL
+SMT_Trainer.warmup_steps    = 0
+SMT_Trainer.load_pretrained = False
+
+# TRAINING HYPERPARAMS
+train_hparams.lr                      = 1e-6
+train_hparams.accumulate_grad_batches = 1
+train_hparams.batch_size              = 1
+train_hparams.val_batch_size          = 1
+train_hparams.num_workers             = 8
+train_hparams.check_val_every_n_epoch = 5
+
+# VOCAB (loaded from ckpt; these are unused but kept for consistency)
+make_vocabulary.pathToSave = "vocab"
