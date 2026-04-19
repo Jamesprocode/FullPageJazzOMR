@@ -214,11 +214,11 @@ def train(
     )
     best_ckpt = ModelCheckpoint(
         dirpath=weights_dir, filename=f"fullpage_ft_fold{fold}_best",
-        monitor="val/loss", mode="min", save_top_k=1,
+        monitor="val/ser", mode="min", save_top_k=1,
         save_last=False, verbose=True, save_on_train_epoch_end=False,
     )
     early_stop = EarlyStopping(
-        monitor="val/loss", mode="min", patience=patience, verbose=True,
+        monitor="val/ser", mode="min", patience=patience, verbose=True,
     )
 
     # ── logger + trainer ───────────────────────────────────────────────────────
