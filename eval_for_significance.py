@@ -104,8 +104,11 @@ OUT_MD  = "analysis_out/significance.md"
 METRIC_KEYS = ["cer", "ser", "ler", "kern_cer", "kern_ser", "kern_ler",
                "chord_ser", "root_ser"]
 
-# Metrics to test for significance (the headline three for the paper)
-SIG_METRICS = ["cer", "ser", "ler"]
+# Metrics to test for significance. All 8 are run so the output table
+# mirrors `sig_from_existing.py` for every masking ratio.
+SIG_METRICS = ["cer", "ser", "ler",
+               "kern_cer", "kern_ser", "kern_ler",
+               "root_ser", "chord_ser"]
 
 
 # ── shared helpers ────────────────────────────────────────────────────────────
