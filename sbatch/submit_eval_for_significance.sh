@@ -17,7 +17,14 @@ conda activate jazzmus
 
 echo "Job started: $(date)"
 echo "Node: $SLURMD_NODENAME"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+echo "SLURM_JOB_GPUS=$SLURM_JOB_GPUS"
+
+echo "--- nvidia-smi (pre-run) ---"
 nvidia-smi
+
+echo "--- torch CUDA check ---"
+python -c "import torch; print('torch', torch.__version__, 'cuda_runtime', torch.version.cuda); print('cuda available:', torch.cuda.is_available()); print('device count:', torch.cuda.device_count()); print('device 0:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NONE')"
 
 # Pipeline (all in one script):
 #   1. inference on 4 r=100 candidates → pick best as "r100"
@@ -26,8 +33,10 @@ nvidia-smi
 #   4. write per-page wide CSV
 #   5. paired Wilcoxon + Holm correction → markdown table
 
-
 echo "=== eval_for_significance: 7 inference passes + paired Wilcoxon ==="
 python eval_for_significance.py
+
+echo "--- nvidia-smi (post-run) ---"
+nvidia-smi
 
 echo "Job finished: $(date)"

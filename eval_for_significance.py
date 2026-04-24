@@ -35,6 +35,16 @@ from statsmodels.stats.multitest import multipletests
 
 torch.set_float32_matmul_precision("high")
 
+
+def _require_cuda():
+    """Hard fail if CUDA isn't available — silent CPU fallback hides OOM bugs."""
+    if not torch.cuda.is_available():
+        sys.exit("ERROR: CUDA not available. Refusing to run on CPU "
+                 "(would OOM the host). Check sbatch --gres=gpu allocation.")
+    print(f"CUDA OK: device={torch.cuda.get_device_name(0)}, "
+          f"count={torch.cuda.device_count()}, "
+          f"torch={torch.__version__}, cuda={torch.version.cuda}")
+
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "baseline"))
@@ -462,6 +472,7 @@ def main(
                       (skips all inference, useful if you tweak the test).
     """
     if not skip_inference:
+        _require_cuda()
         all_records = run_all_inference(num_workers)
         write_wide_csv(all_records, out_csv)
     else:
