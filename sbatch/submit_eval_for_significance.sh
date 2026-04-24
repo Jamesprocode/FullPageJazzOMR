@@ -25,6 +25,8 @@ nvidia-smi
 #   3. inference on r0, r025, r05 full-page checkpoints
 #   4. write per-page wide CSV
 #   5. paired Wilcoxon + Holm correction → markdown table
+
+
 echo "=== eval_for_significance: 7 inference passes + paired Wilcoxon ==="
 python eval_for_significance.py
 
