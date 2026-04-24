@@ -87,7 +87,7 @@ CHECKPOINTS = {
 # keep only the best one as the final r100 entry. Selection criterion: lowest
 # mean overall SER across pages (matches the paper's headline metric).
 R100_CANDIDATES = [
-    Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best.ckpt"),
+    # pagecrop_fold0_best.ckpt was already evaluated in a prior run and ruled out.
     Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-v1.ckpt"),
     Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-v2.ckpt"),
     Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-v2-bachsize1.ckpt"),
