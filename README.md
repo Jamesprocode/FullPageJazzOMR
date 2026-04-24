@@ -1,224 +1,235 @@
 # FullPageJazzOMR
 
-End-to-end Optical Music Recognition for full-page jazz sheet music using curriculum learning. The system progressively trains a neural model from single-system crops to full multi-system pages, transcribing jazz scores into symbolic notation (kern format).
+End-to-end Optical Music Recognition for **handwritten jazz lead sheets**, transcribing complete page images directly into Humdrum `**kern` + `**mxhm` notation. The system extends the Sheet Music Transformer (SMT) from staff-level to full-page input via curriculum learning, and is benchmarked against a YOLO-based detect-and-concatenate baseline.
+
+This repository accompanies the ISMIR submission *"Full-Page Optical Music Recognition of Jazz Lead Sheets"* (Wang & Lerch, 2026).
+
+## What's in this repo
+
+- **Two curriculum strategies** for adapting a staff-level SMT checkpoint to full-page input:
+  - **Masking curriculum** — progressively reveal more staves on real full-page scans, sweeping replay ratio `r ∈ {0, 0.25, 0.5, 1.0}`.
+  - **Stacking curriculum** — synthesize multi-staff training samples by vertically concatenating staff crops.
+- **Detect-and-concatenate baseline** — YOLOv11s staff segmentation + staff-level SMT recognition + page assembly. The comparison system for full-page training.
+- **Chord-oriented evaluation metrics** — `SER_Root` and `SER_Chord` on the `**mxhm` spine, plus melody-only versions of CER/SER/LER on the `**kern` spine.
+- **Significance + error-analysis pipeline** — paired Wilcoxon tests with Holm correction across all (model × metric) pairs, plus per-page and per-token error breakdowns.
 
 ## Architecture
 
-FullPageJazzOMR uses a **ConvNext encoder + Transformer decoder** architecture with a 9-stage curriculum learning strategy:
+The proposed model is the [Sheet Music Transformer](https://github.com/multiscore/smt) with one vocabulary change: a dedicated `<linebreak>` token to mark staff boundaries (vocab 154 → 155). The input embedding and output projection are extended by one position; the new entries are randomly initialized while the original 154 are loaded from the staff-level pretrained checkpoint.
 
 ```
-Input: Full-page jazz music image (grayscale)
-         │
-         ▼
-┌─────────────────────────┐
-│   ConvNext Encoder      │   3 stages, hidden sizes [64, 128, 256]
-│   (3 stages, depths     │   depths [3, 3, 9]
-│    [3, 3, 9])           │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  2D Positional Encoding │   Sinusoidal spatial encoding
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  Transformer Decoder    │   8 layers, 4 attention heads
-│  (cross-attention to    │   d_model = 256
-│   encoder features)     │
-└────────┬────────────────┘
-         │
-         ▼
-   Output: Symbolic music notation (kern)
+Full-page handwritten lead sheet
+            │
+            ▼
+   ConvNeXt encoder  ──►  2D positional encoding  ──►  Transformer decoder (cross-attn)
+                                                                    │
+                                                                    ▼
+                                              Humdrum (**kern + **mxhm), <linebreak>-separated
 ```
 
-### Curriculum Learning
+Both curricula proceed through 9 stages, where stage `k` exposes the model to inputs containing exactly `k` staves. Stage advancement is dynamic: advance once validation SER < 20% for 3 consecutive validation epochs.
 
-Training proceeds through 9 stages, each adding one more system to the input crop:
-
-| Stage | Input | Description |
-|-------|-------|-------------|
-| 1 | 1-system crop | Single staff system |
-| 2 | 2-system crop | Two adjacent systems |
-| ... | ... | ... |
-| 9 | Full page | Up to 9 systems (full page) |
-
-Stage advancement is automatic: the model advances when validation Symbol Error Rate (SER) drops below a threshold for a set number of consecutive epochs. An optional **experience replay** mechanism (50% replay ratio) prevents catastrophic forgetting of earlier stages.
-
-## Project Structure
+## Project structure
 
 ```
 FullPageJazzOMR/
-├── config/                      # Gin configuration files
-│   ├── pagecrop_9stage.gin      # 9-stage curriculum (no replay)
-│   └── pagecrop_9stage_replay.gin  # 9-stage with 50% replay
-├── data_prep/                   # Offline data preparation
-│   ├── prepare_pagecrop.py      # Pre-compute N-system page crops
-│   └── prepare_synthetic.py     # Generate synthetic training data
+├── config/                          # gin configs
+│   ├── pagecrop_9stage.gin          # masking curriculum, no replay (r=0)
+│   ├── pagecrop_9stage_replay.gin   # masking curriculum, with replay
+│   ├── stacked_9stage.gin           # stacking curriculum (online)
+│   ├── stacked_precomputed_9stage.gin       # stacking, precomputed samples
+│   └── fullpage_finetune.gin        # final-stage fine-tune on real pages only
+├── data_prep/
+│   └── prepare_pagecrop.py          # pre-compute top-N staff crops
 ├── datasets/
-│   └── page_crop_dataset.py     # Curriculum-aware dataset
-├── jazzmus/                     # Core library
-│   ├── curriculum/
-│   │   └── trainer.py           # CurriculumSMTTrainer
+│   ├── page_crop_dataset.py         # masking-curriculum dataset
+│   └── full_page_dataset.py         # full-page test-set wrapper
+├── jazzmus/                         # core library
+│   ├── curriculum/trainer.py        # CurriculumSMTTrainer + DynamicCurriculumAdvancer
 │   ├── dataset/
-│   │   ├── eval_functions.py    # SER, CER, LER metrics
-│   │   └── chord_metrics.py     # Chord-specific evaluation (MIREX)
-│   ├── model/
-│   │   └── smt/
-│   │       ├── modeling_smt.py      # SMTModelForCausalLM
-│   │       └── configuration_smt.py # SMTConfig
-│   └── smt_trainer.py           # Base SMT training module
-├── vocab/                       # Vocabulary mappings (w2i / i2w)
-├── weights/                     # Model checkpoints
-├── train.py                     # Main training entry point
-└── test.py                      # Evaluation entry point
+│   │   ├── eval_functions.py        # CER / SER / LER
+│   │   └── chord_metrics.py         # SER_Root, SER_Chord, alignment helpers
+│   └── model/smt/                   # SMT model + config
+├── baseline/
+│   ├── full_page_baseline.py        # YOLO segmentation + concatenation
+│   └── inference.py                 # FullPageInference (staff-level SMT runner)
+├── train.py                         # masking-curriculum training entry point
+├── train_stacked.py                 # stacking-curriculum training (online)
+├── train_precomputed_stacking.py    # stacking-curriculum training (precomputed)
+├── finetune_fullpage.py             # fine-tune final stage on real pages
+├── prepare_stacked_data.py          # build stacked dataset for precomputed pipeline
+├── test.py                          # legacy single-checkpoint eval
+├── test_fullpage.py                 # full-page checkpoint eval (overall + kern-only)
+├── eval_checkpoints.py              # evaluate a fixed list of checkpoints
+├── eval_for_significance.py         # paired Wilcoxon pipeline (see below)
+├── analyze_errors.py                # per-token error analysis (replay vs. baseline)
+├── per_sample_analysis.py           # per-page metric dump
+├── plot_per_n.py                    # error rate vs. staves-per-page (Fig. in paper)
+└── sbatch/                          # PACE Slurm submission scripts
 ```
 
-## Getting Started
-
-### Prerequisites
-
-- Python 3.10+
-- CUDA-compatible GPU (recommended)
+## Getting started
 
 ### Installation
 
 ```bash
 git clone git@github.com:Jamesprocode/FullPageJazzOMR.git
 cd FullPageJazzOMR
-pip install -r requirements.txt
+conda env create -f environment.yml
+conda activate jazzmus
 ```
 
-Key dependencies:
+Key dependencies: PyTorch 2.6, PyTorch Lightning 2.5, Transformers 4.57, gin-config, music21, OpenCV, Ultralytics YOLO, scipy, statsmodels.
 
-| Package | Version |
-|---------|---------|
-| PyTorch | 2.6.0 |
-| PyTorch Lightning | 2.5.5 |
-| Transformers | 4.57.1 |
-| gin-config | 0.5.0 |
-| WandB | 0.22.2 |
-| OpenCV | 4.12.0 |
-| music21 | 9.9.1 |
+### Data
 
-### Data Preparation
+The dataset is [JazzMus](https://huggingface.co/datasets/PRAIG/JAZZMUS) (163 jazz standards, 326 synthetic full pages + 293 handwritten full pages, with Humdrum and MusicXML annotations). We contributed annotation fixes to the upstream repository — see Section 3.1.1 of the paper.
 
-Pre-compute N-system page crops from full-page data:
+Pre-compute top-N crops for the masking curriculum:
 
 ```bash
 python data_prep/prepare_pagecrop.py \
-    --jazzmus_fullpage ../ISMIR-Jazzmus/data/jazzmus_fullpage \
-    --jazzmus_parquet ../JAZZMUS/data/train-00000-of-00001.parquet \
-    --out_dir data/jazzmus_pagecrop \
-    --folds 0 \
-    --max_n 9 \
-    --bottom_pad 20
+    --jazzmus_fullpage data/jazzmus_fullpage \
+    --jazzmus_parquet  data/train-00000-of-00001.parquet \
+    --out_dir          data/jazzmus_pagecrop \
+    --folds 0 --max_n 9 --bottom_pad 20
 ```
 
-Expected data layout:
-
-```
-jazzmus_pagecrop/
-├── jpg/          # img_<X>_n<N>.jpg
-├── gt/           # img_<X>_n<N>.txt (kern format)
-└── splits/       # train_0.txt, val_0.txt, test_0.txt
-```
-
-### Training
-
-Train with curriculum learning from a Phase-1 system-level checkpoint:
+Build the precomputed stacked dataset for the stacking curriculum:
 
 ```bash
-python train.py \
-    --config config/pagecrop_9stage.gin \
-    --checkpoint ../ISMIR-Jazzmus/weights/smt/smt_0.ckpt \
-    --fold 0
+python prepare_stacked_data.py
 ```
 
-With experience replay to reduce forgetting:
+## Training
+
+### Masking curriculum (proposed model)
 
 ```bash
-python train.py \
-    --config config/pagecrop_9stage_replay.gin \
-    --checkpoint ../ISMIR-Jazzmus/weights/smt/smt_0.ckpt \
-    --fold 0
+# r = 0 (no replay)
+python train.py --config config/pagecrop_9stage.gin \
+    --checkpoint ../ISMIR-Jazzmus/weights/smt/smt_0.ckpt --fold 0
+
+# r ∈ {0.25, 0.5, 1.0} — set replay_ratio in the gin file
+python train.py --config config/pagecrop_9stage_replay.gin \
+    --checkpoint ../ISMIR-Jazzmus/weights/smt/smt_0.ckpt --fold 0
 ```
 
-Override hyperparameters via CLI:
+Stages 1–8 train with batch size 8 at lr `5e-5`. Stage 9 drops to batch size 1 and lr `5e-6` due to memory pressure from full-page inputs.
+
+### Stacking curriculum
 
 ```bash
-python train.py \
-    --config config/pagecrop_9stage.gin \
-    --checkpoint ../ISMIR-Jazzmus/weights/smt/smt_0.ckpt \
-    --lr 1e-5 \
-    --batch_size 4 \
-    --accumulate_grad_batches 32 \
-    --num_workers 8 \
-    --fold 0
+python train_precomputed_stacking.py \
+    --config config/stacked_precomputed_9stage.gin \
+    --checkpoint ../ISMIR-Jazzmus/weights/smt/smt_0.ckpt --fold 0
 ```
 
-Resume from a checkpoint:
+A fixed replay ratio `r = 0.25` is used. Final stage (k = 9) appends real full-page samples to the pool.
+
+## Evaluation
+
+### Single checkpoint, full-page test set
 
 ```bash
-python train.py \
-    --config config/pagecrop_9stage.gin \
-    --resume weights/pagecrop/pagecrop_fold0_last.ckpt \
-    --resume_stage 5 \
-    --fold 0
-```
-
-### Evaluation
-
-```bash
-python test.py \
+python test_fullpage.py \
     --checkpoint weights/pagecrop/pagecrop_fold0_best.ckpt \
-    --data_path data/jazzmus_pagecrop \
-    --fold 0 \
-    --final_stage 9
+    --data_path data/jazzmus_fullpage --fold 0 --stage 9
 ```
 
-## Evaluation Metrics
+Reports overall CER / SER / LER and `**kern`-only versions.
 
-### Transcription Metrics
+### Paired significance pipeline (paper Table 1)
 
-| Metric | Level | Description |
-|--------|-------|-------------|
-| **SER** | Symbol | Symbol Error Rate — edit distance over ground truth tokens |
-| **CER** | Character | Character Error Rate — character-level edit distance |
-| **LER** | Line | Line Error Rate — system/line-level accuracy |
+[`eval_for_significance.py`](eval_for_significance.py) is a single-file pipeline that:
 
-### Chord Metrics (MIREX-style)
+1. Runs inference for the **4 candidate r=100 checkpoints**, picks the one with lowest mean SER as the final `r100` entry.
+2. Runs the **detect-and-concatenate baseline** (YOLO segmentation → staff-level SMT → page assembly).
+3. Runs inference for the other masking checkpoints (`r0`, `r025`, `r05`).
+4. Writes per-page metrics to a wide CSV (re-sliceable later).
+5. Runs **paired Wilcoxon signed-rank tests** (one-sided, H1: model better than baseline) with **Holm correction** across all (model × metric) combinations and emits a paper-ready markdown table.
+
+Submit via Slurm:
+
+```bash
+sbatch sbatch/submit_eval_for_significance.sh
+```
+
+Or re-run only the stats from an existing CSV:
+
+```bash
+python eval_for_significance.py --skip_inference
+```
+
+### Error analysis
+
+```bash
+python analyze_errors.py     # per-token replay vs. baseline error breakdown
+python per_sample_analysis.py # per-page metric dump
+python plot_per_n.py          # SER_Melo and SER_Root vs. staves-per-page
+```
+
+## Evaluation metrics
+
+### Overall (full untokenized humdrum)
 
 | Metric | Description |
 |--------|-------------|
-| **CSR** | Chord Symbol Recall — duration-weighted chord accuracy |
-| **Root F1** | Chord root detection accuracy |
-| **Quality** | Major/minor/7th quality accuracy |
-| **Full Match F1** | Exact full chord symbol match |
+| **CER** | Character-level Levenshtein edit distance |
+| **SER** | Symbol-level Levenshtein edit distance |
+| **LER** | Line-level edit distance (any 1-char mismatch counts as a line substitution) |
+
+### Spine-specific (paper Table 2)
+
+Computed on the `**kern` spine only to isolate melodic accuracy:
+
+| Metric | Description |
+|--------|-------------|
+| `CER_Melo`, `SER_Melo`, `LER_Melo` | CER / SER / LER on `**kern` only |
+
+Computed on the `**mxhm` spine to isolate harmonic accuracy:
+
+| Metric | Description |
+|--------|-------------|
+| `SER_Root`  | Levenshtein over chord-root tokens only — does the model recover the harmonic backbone? |
+| `SER_Chord` | Levenshtein over full chord symbols (root + quality + extensions + inversion) |
+
+## Headline results (32-page test set)
+
+From paper Tables 1 and 2:
+
+| Model | CER | SER | LER | SER_Root | SER_Chord |
+|-------|-----|-----|-----|----------|-----------|
+| Baseline (YOLO + staff-SMT)  | 13.55 | 12.78 | 32.35 | 29.17 | 47.82 |
+| Masking, r=0                 | 17.61 | 16.80 | 31.41 |   —   |   —   |
+| Masking, r=0.25              | 17.48 | 16.73 | 29.13 |   —   |   —   |
+| Masking, r=0.50              | 14.11 | 13.59 | 26.25 |   —   |   —   |
+| **Masking, r=1.00**          | **13.32** | **12.50** | **23.15** | **21.25** | **30.67** |
+| Stacking, r=0.25             | 24.30 | 22.90 | 44.55 |   —   |   —   |
+
+The largest gains come from **LER** (32.35 → 23.15) and **SER_Chord** (47.82 → 30.67), confirming that page-level context primarily helps structural alignment and chord-symbol transcription rather than note-level accuracy.
 
 ## Configuration
 
-Training is configured via [gin-config](https://github.com/google/gin-config). Key parameters in the gin files:
+Training is configured via [gin-config](https://github.com/google/gin-config). Key knobs:
 
 ```python
-# Curriculum settings
-PageCropDataset.num_cl_stages       = 9       # Number of curriculum stages
-PageCropDataset.system_height       = 256     # Pixels per system row
-PageCropDataset.replay_ratio        = 0.0     # Experience replay ratio (0.5 for replay config)
+# Curriculum
+PageCropDataset.num_cl_stages   = 9
+PageCropDataset.system_height   = 256
+PageCropDataset.replay_ratio    = 1.0     # 0.0 / 0.25 / 0.5 / 1.0
 
 # Stage advancement
-DynamicCurriculumAdvancer.ser_threshold  = 28.0   # Advance when val/SER < this
-DynamicCurriculumAdvancer.patience       = 3      # Epochs below threshold to advance
-DynamicCurriculumAdvancer.final_patience = 5      # Early stopping patience at final stage
+DynamicCurriculumAdvancer.ser_threshold  = 20.0
+DynamicCurriculumAdvancer.patience       = 3
+DynamicCurriculumAdvancer.final_patience = 10
 
-# Training
-train_hparams.lr                    = 1e-5
-train_hparams.batch_size            = 4
-train_hparams.accumulate_grad_batches = 1
-train_hparams.num_workers           = 4
+# Optimizer
+train_hparams.lr                      = 5e-5     # 5e-6 at stage 9
+train_hparams.batch_size              = 8        # 1 at stage 9
 train_hparams.check_val_every_n_epoch = 10
 ```
 
-## Experiment Tracking
+## Experiment tracking
 
-Training logs are tracked with [Weights & Biases](https://wandb.ai/) under the project `fullpage-jazz-omr`, group `pagecrop_curriculum`.
+Runs are logged to [Weights & Biases](https://wandb.ai/) under the project `fullpage-jazz-omr`. All experiments use a single NVIDIA H200 GPU with BF16 mixed precision (PACE / Georgia Tech).
