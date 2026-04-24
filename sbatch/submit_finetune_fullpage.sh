@@ -2,9 +2,9 @@
 #SBATCH -J fullpage-ft
 #SBATCH -p ice-gpu
 #SBATCH --gres=gpu:h200:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
-#SBATCH -t 12:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+#SBATCH -t 16:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=jwang3180@gatech.edu
 #SBATCH -o logs/slurm_%j.out

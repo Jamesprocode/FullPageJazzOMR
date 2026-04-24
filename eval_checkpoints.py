@@ -1,9 +1,14 @@
 """
-Evaluate a fixed list of best checkpoints on kern-spine-only CER / SER / LER.
+Evaluate a fixed list of checkpoints on the real full-page test split.
+
+Reports 8 metrics per checkpoint:
+  Overall : CER, SER, LER  (full untokenized humdrum text)
+  Chord   : chord SER (no-dots), root SER
+  Kern    : CER, SER, LER  (**kern spine only)
 
 Run from FullPageJazzOMR/:
     python eval_checkpoints.py
-    python eval_checkpoints.py --data_path /path/to/jazzmus_pagecrop --fold 0
+    python eval_checkpoints.py --data_path /path/to/jazzmus_fullpage --fold 0
 """
 
 import sys
@@ -15,24 +20,25 @@ import fire
 torch.set_float32_matmul_precision("high")
 sys.path.insert(0, str(Path(__file__).parent))
 
-from datasets.page_crop_dataset import PageCropDataset
+from datasets.full_page_dataset import FullPageDataset
 from jazzmus.curriculum.trainer import CurriculumSMTTrainer
 from jazzmus.dataset.smt_dataset import batch_preparation_img2seq
 from jazzmus.dataset.tokenizer import untokenize
 from jazzmus.dataset.eval_functions import compute_poliphony_metrics
+from jazzmus.dataset.chord_metrics import (
+    extract_spines,
+    extract_tokens_from_mxhm,
+    compute_page_chord_metrics,
+    aggregate_page_chord_metrics,
+)
 from torch.utils.data import DataLoader
 
-WEIGHTS_ROOT = Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights")
-
-# All 7 checkpoints to evaluate, in order
+# 4 checkpoints to evaluate, in order
 CHECKPOINTS = [
-    ("no_replay",           WEIGHTS_ROOT / "pagecrop"          / "pagecrop_fold0_best.ckpt"),
-    ("replay_25pct",        WEIGHTS_ROOT / "replay"            / "pagecrop_fold0_best.ckpt"),
-    ("replay_50pct",        WEIGHTS_ROOT / "replay_50percent"  / "pagecrop_fold0_best.ckpt"),
-    ("replay_100pct",       WEIGHTS_ROOT / "replay_100percent" / "pagecrop_fold0_best.ckpt"),
-    ("replay_100pct_v1",    WEIGHTS_ROOT / "replay_100percent" / "pagecrop_fold0_best-v1.ckpt"),
-    ("replay_100pct_v2",    WEIGHTS_ROOT / "replay_100percent" / "pagecrop_fold0_best-v2.ckpt"),
-    ("replay_100pct_v2_bs1",WEIGHTS_ROOT / "replay_100percent" / "pagecrop_fold0_best-v2-bachsize1.ckpt"),
+    ("1", Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-v1.ckpt")),
+    ("2", Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-v2-bachsize1.ckpt")),
+    ("3", Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-v2.ckpt")),
+    ("4", Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best.ckpt")),
 ]
 
 
@@ -59,42 +65,50 @@ def kern_spine_only(text: str) -> str:
     return "\n".join(out)
 
 
+def mxhm_tokens(text: str):
+    """Extract chord tokens (with dots) from the **mxhm spine of a humdrum page."""
+    spines = extract_spines(text)
+    mxhm = spines.get("**mxhm", "")
+    if not mxhm:
+        return []
+    return extract_tokens_from_mxhm(mxhm)
+
+
 # ── inference ─────────────────────────────────────────────────────────────────
 
-def run_inference(checkpoint_path, data_path, fold, system_height, final_stage, batch_size, num_workers):
+def run_inference(checkpoint_path, data_path, fold, final_stage, num_workers):
     model = CurriculumSMTTrainer.load_from_checkpoint(
         checkpoint_path, load_pretrained=False, strict=False,
     )
     w2i = model.model.w2i
     i2w = model.model.i2w
 
-    test_set = PageCropDataset(
-        data_path=data_path, split="test", fold=fold,
-        augment=False, system_height=system_height,
-    )
+    test_set = FullPageDataset(data_path=data_path, split="test", fold=fold)
     test_set.set_dictionaries(w2i, i2w)
-    test_set.set_stage_direct(final_stage)
 
     seq_maxlen = int(max(len(t) for t in test_set.gt_tokens) * 1.1)
     if seq_maxlen > model.model.maxlen:
         model.model.maxlen = seq_maxlen
 
+    model.set_stage(final_stage)
     model.freeze()
     model.eval()
 
     loader = DataLoader(
-        test_set, batch_size=batch_size, num_workers=num_workers,
+        test_set, batch_size=1, num_workers=num_workers,
         collate_fn=batch_preparation_img2seq,
     )
-
-    preds_kern, gts_kern = [], []
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
+    preds_full, gts_full = [], []
+    preds_kern, gts_kern = [], []
+    page_chord_metrics = []
+
     with torch.no_grad():
         for batch in loader:
-            x, di, y, _ = batch
+            x, _, y, _ = batch
             x = x.to(device)
             for x_s, y_s in zip(x, y):
                 pred_seq, _ = model.model.predict(input=x_s)
@@ -108,24 +122,41 @@ def run_inference(checkpoint_path, data_path, fold, system_height, final_stage, 
                     clean.append(t)
                 gt_text = untokenize(clean)
 
+                preds_full.append(pred_text)
+                gts_full.append(gt_text)
                 preds_kern.append(kern_spine_only(pred_text))
                 gts_kern.append(kern_spine_only(gt_text))
 
-    cer, ser, ler = compute_poliphony_metrics(preds_kern, gts_kern)
-    return {"cer": cer, "ser": ser, "ler": ler}
+                pred_chord_toks = mxhm_tokens(pred_text)
+                gt_chord_toks   = mxhm_tokens(gt_text)
+                page_chord_metrics.append(
+                    compute_page_chord_metrics(pred_chord_toks, gt_chord_toks)
+                )
+
+    cer, ser, ler             = compute_poliphony_metrics(preds_full, gts_full)
+    kern_cer, kern_ser, kern_ler = compute_poliphony_metrics(preds_kern, gts_kern)
+    agg = aggregate_page_chord_metrics(page_chord_metrics)
+
+    return {
+        "cer":       cer,
+        "ser":       ser,
+        "ler":       ler,
+        "chord_ser": agg.get("agg_ser_no_dots", float("nan")),
+        "root_ser":  agg.get("agg_root_ser",  float("nan")),
+        "kern_cer":  kern_cer,
+        "kern_ser":  kern_ser,
+        "kern_ler":  kern_ler,
+    }
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main(
-    data_path:    str = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_pagecrop",
-    fold:          int = 0,
-    final_stage:   int = 9,
-    system_height: int = 256,
-    batch_size:    int = 1,
-    num_workers:   int = 4,
+    data_path:    str = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_fullpage",
+    fold:         int = 0,
+    final_stage:  int = 9,
+    num_workers:  int = 4,
 ):
-    # ── list all paths upfront ────────────────────────────────────────────────
     print("Checkpoints to evaluate:")
     missing = []
     for name, path in CHECKPOINTS:
@@ -137,23 +168,30 @@ def main(
         print(f"\nWARNING: {len(missing)} checkpoint(s) missing — they will be skipped.")
     print()
 
-    # ── evaluate ──────────────────────────────────────────────────────────────
     results = []
     for name, path in CHECKPOINTS:
         if not path.exists():
             continue
         print(f"=== {name} ===")
-        m = run_inference(str(path), data_path, fold, system_height, final_stage, batch_size, num_workers)
+        m = run_inference(str(path), data_path, fold, final_stage, num_workers)
         results.append((name, m))
-        print(f"  Kern  CER={m['cer']:.2f}%  SER={m['ser']:.2f}%  LER={m['ler']:.2f}%\n")
+        print(
+            f"  Overall  CER={m['cer']:.2f}%  SER={m['ser']:.2f}%  LER={m['ler']:.2f}%\n"
+            f"  Chord    SER={m['chord_ser']:.2f}%  Root SER={m['root_ser']:.2f}%\n"
+            f"  Kern     CER={m['kern_cer']:.2f}%  SER={m['kern_ser']:.2f}%  LER={m['kern_ler']:.2f}%\n"
+        )
 
     # ── summary table ─────────────────────────────────────────────────────────
-    print("\n" + "=" * 65)
-    print(f"{'Experiment':<25} {'Kern CER':>10} {'Kern SER':>10} {'Kern LER':>10}")
-    print("-" * 65)
+    cols = ["CER", "SER", "LER", "ChSER", "RtSER", "KCER", "KSER", "KLER"]
+    keys = ["cer", "ser", "ler", "chord_ser", "root_ser", "kern_cer", "kern_ser", "kern_ler"]
+    header_width = 15 + 9 * len(cols)
+    print("\n" + "=" * header_width)
+    print(f"{'Experiment':<15}" + "".join(f"{c:>9}" for c in cols))
+    print("-" * header_width)
     for name, m in results:
-        print(f"{name:<25} {m['cer']:>10.2f} {m['ser']:>10.2f} {m['ler']:>10.2f}")
-    print("=" * 65)
+        row = f"{name:<15}" + "".join(f"{m[k]:>8.2f}%" for k in keys)
+        print(row)
+    print("=" * header_width)
 
 
 if __name__ == "__main__":
