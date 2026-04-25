@@ -121,7 +121,7 @@ As our study introduces full-page handwritten jazz lead sheet transcription, we 
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{latex/Baseline Flow Chart.pdf}
+\includegraphics[width=0.7\columnwidth]{latex/Baseline Flow Chart.pdf}
 \caption{Overview of the baseline detect-and-concatenate inference pipeline.}
 \label{fig:baseline_flowchart}
 \end{figure}
@@ -166,7 +166,7 @@ All experiments are conducted on a single NVIDIA H200 GPU using BF16 mixed preci
 
 \subsection{Evaluation Metrics}
 \label{sec:metrics}
-Following prior work in OMR and end-to-end music transcription~\cite{calvo-zaragoza_understanding_2021, rios-vila_sheet_2024, martinez-sevilla_optical_2025, RiosVila2026FullPageOMR}, we report three edit-distance-based error rates as overall measures of model performance: Character Error Rate (CER), Symbol Error Rate (SER), and Line Error Rate (LER), computed as the Levenshtein edit distance between the prediction and ground truth, divided by the total number of ground-truth units at the corresponding level and multiplied by 100. CER is computed at the character level and indicates individual character errors. SER is computed at the symbol level, assessing the correctness of individual musical symbols, although it may still treat partially correct predictions as a whole edit-distance substitution error. LER is computed at the line level: a predicted line is counted as a substitution if it differs from the ground truth by even a single character. In our setting, LER implicitly evaluates line-level structural errors, such as assigning a chord symbol to the wrong note line, but it does not distinguish between minor and major mismatches within a line. To better isolate melodic accuracy, these metrics are also computed on the melodic spine only. These melody-only metrics are denoted with the subscript melo: 
+Following prior work in OMR and end-to-end music transcription~\cite{calvo-zaragoza_understanding_2021, rios-vila_sheet_2024, martinez-sevilla_optical_2025, RiosVila2026FullPageOMR}, we report three edit-distance-based error rates as overall measures of model performance: Character Error Rate (CER), Symbol Error Rate (SER), and Line Error Rate (LER), computed as the Levenshtein edit distance between the prediction and ground truth, divided by the total number of ground-truth units at the corresponding level and multiplied by 100. CER is computed at the character level and indicates individual character errors. SER is computed at the symbol level, assessing the correctness of individual musical symbols, although it may still treat partially correct predictions as a whole edit-distance substitution error. LER is computed at the line level: a predicted line is counted as a substitution if it differs from the ground truth by even a single character. In our setting, LER implicitly evaluates line-level structural errors, such as assigning a chord symbol to the wrong note line, but it does not distinguish between minor and major mismatches within a line. To better isolate melodic accuracy, these metrics are also computed on the melodic spine only. These melody-only metrics are denoted with the subscript Melo: 
 $\mathrm{CER}_{\mathrm{Melo}}$, $\mathrm{SER}_{\mathrm{Melo}}$, and $\mathrm{LER}_{\mathrm{Melo}}$.
 
 While the traditional OMR metrics provide an overview of transcription accuracy, they are insufficient for isolating harmonic performance as melodic and harmonic errors are treated equally. To allow for differentiation between melodic and harmonic recognition performance, we introduce two chord-oriented metrics based on extracting chord symbols from the **mxhm spine into an ordered list and disregarding the spacing between them. 
@@ -187,7 +187,7 @@ We organize the results around two subsections. First, we report overall full-pa
 \subsection{Overall Full-Page Recognition}
 \begin{table}
 \centering
-\caption{Overall full-page recognition results on the 32-page test set. All values are edit-distance error rates (\%; lower is better).}
+\caption{Overall full-page recognition results on the 32-page test set. All values are edit-distance error rates (\%; lower is better). Stars indicate significant improvement over Baseline (paired Wilcoxon signed-rank, one-sided, Holm-corrected): $^{*}\,p<0.05$, $^{**}\,p<0.01$, $^{***}\,p<0.001$.}
 \label{tab:overall}
 %\renewcommand{\arraystretch}{1.15}
 \begin{tabular*}{\columnwidth}{l@{\extracolsep{\fill}}rrr}
@@ -199,14 +199,14 @@ Baseline              & 13.55 & 12.78 & 32.35 \\
 Masking, $r=0$        & 17.61 & 16.80 & 31.41 \\
 Masking, $r=0.25$     & 17.48 & 16.73 & 29.13 \\
 Masking, $r=0.50$     & 14.11 & 13.59 & 26.25 \\
-Masking, $r=1.00$     & \textbf{13.32} & \textbf{12.50} & \textbf{23.15} \\
+Masking, $r=1.00$     & \textbf{13.32} & \textbf{12.50} & \textbf{23.15}\rlap{$^{**}$} \\
 \midrule
 Stacking, $r=0.25$    & 24.30 & 22.90 & 44.55 \\
 \bottomrule
 \end{tabular*}
 \end{table}
 
-The overall full-page recognition results are shown in Table~\ref{tab:overall}. This result matches the previous staff-level study with minor increase within $\pm 2--3\%$. Among the masking curriculum models, performance improves consistently as the replay ratio increases. Without replay ($r=0$), the model performs worse than the baseline in CER and SER, although its LER is slightly lower than the baseline. A small amount of replay ($r=0.25$) produces only minor improvement, while $r=0.50$ brings CER and SER much closer to the baseline and further reduces LER. The best-performing model is the masking curriculum with full replay ($r=1.00$), which slightly improves over the baseline in CER and SER,\note{did you do a pairwise significance test?}, while reducing LER substantially. The consistent LER improvement suggests that full-page training helps the model produce better line-level structure. Since LER is the metric most sensitive to structural mismatches, and the only standard metric that indirectly reflects chord–melody alignment, this improvement may indicate better alignment of chord symbols. In contrast, CER and SER improve only when sufficient replay is used. One possible explanation is that higher replay ratios substantially increase the amount and diversity of training data by retaining more prior-stage samples, which supports stronger character- and symbol-level performance in later curriculum stages.
+The overall full-page recognition results are shown in Table~\ref{tab:overall}. This result matches the previous staff-level study with minor increase within $\pm 2-3\%$. Among the masking curriculum models, performance improves consistently as the replay ratio increases. Without replay ($r=0$), the model performs worse than the baseline in CER and SER, although its LER is slightly lower than the baseline. A small amount of replay ($r=0.25$) produces only minor improvement, while $r=0.50$ brings CER and SER much closer to the baseline and further reduces LER. The best-performing model is the masking curriculum with full replay ($r=1.00$), which slightly improves over the baseline in CER and SER,\note{did you do a pairwise significance test?}, while reducing LER substantially. The consistent LER improvement suggests that full-page training helps the model produce better line-level structure. Since LER is the metric most sensitive to structural mismatches, and the only standard metric that indirectly reflects chord–melody alignment, this improvement may indicate better alignment of chord symbols. In contrast, CER and SER improve only when sufficient replay is used. One possible explanation is that higher replay ratios substantially increase the amount and diversity of training data by retaining more prior-stage samples, which supports stronger character- and symbol-level performance in later curriculum stages.
 
 The stacking curriculum, on the over hand, performs worse than both the baseline and the masking curriculum on the overall metrics. Although synthetic stacking exposes the model to longer inputs and more training data, this result suggests that the generated examples appear to differ too substantially from real full-page layouts. Because the stacked staves are sampled from unrelated examples, this procedure also disrupts global musical context, such as key continuity and chord progressions across the staff, making generalization to real full-page test samples more difficult. We experimented fine-tuning the final stacking method checkpoint on only the complete full page training sample, but the result improved only marginally.
 The limited improvement from fine-tuning suggests that simply exposing the model to real full-page samples after stacking curriculum training is not sufficient to overcome the mismatch introduced during earlier stacking training. One possible explanation is that the number of real full-page examples is relatively small compared to the large amount of synthetically stacked data, making it difficult for the model to fully adapt to authentic page layouts. This indicates that the distribution gap introduced by stacking persists even after fine-tuning.
@@ -214,17 +214,17 @@ The limited improvement from fine-tuning suggests that simply exposing the model
 \subsection{Melodic and Harmonic Recognition}
 \begin{table}[t]
 \centering
-\caption{Spine-specific metrics on the 32-page test set across masking replay ratios. Kern-only metrics are computed on the **kern spine; Root and Chord SER on the **mxhm spine.}
+\caption{Spine-specific metrics on the 32-page test set across masking replay ratios. Kern-only metrics are computed on the **kern spine; Root and Chord SER on the **mxhm spine. Stars indicate significant improvement over Baseline (paired Wilcoxon signed-rank, one-sided, Holm-corrected): $^{*}\,p<0.05$, $^{**}\,p<0.01$, $^{***}\,p<0.001$.}
 \label{tab:spine}
 \begin{tabular*}{\columnwidth}{l@{\extracolsep{\fill}}ccc}
 \toprule
 \textbf{Metric} & \textbf{Baseline} & \textbf{Masking, $r=1.00$} & $\Delta$ \\
 \midrule
-$\mathrm{CER}_{\mathrm{Melo}}$   & 11.96 & \textbf{11.63} & -0.33\\
-$\mathrm{SER}_{\mathrm{Melo}}$   & 14.40 & \textbf{13.02} & -1.38\\
-$\mathrm{LER}_{\mathrm{Melo}}$   & 26.66 & \textbf{18.67} & -7.99\\
-$\mathrm{SER}_{\mathrm{Root}}$   & 29.17 & \textbf{21.25} & -7.92\\
-$\mathrm{SER}_{\mathrm{Chord}}$  & 47.82 & \textbf{30.67} & -17.15\\
+$\mathrm{CER}_{\mathrm{Melo}}$   & 11.96 & \textbf{11.63}\hphantom{$^{***}$} & -0.33\\
+$\mathrm{SER}_{\mathrm{Melo}}$   & 14.40 & \textbf{13.02}\hphantom{$^{***}$} & -1.38\\
+$\mathrm{LER}_{\mathrm{Melo}}$   & 26.66 & \textbf{18.67}$^{**}$\hphantom{$^{*}$}  & -7.99\\
+$\mathrm{SER}_{\mathrm{Root}}$   & 29.17 & \textbf{21.25}$^{**}$\hphantom{$^{*}$}  & -7.92\\
+$\mathrm{SER}_{\mathrm{Chord}}$  & 47.82 & \textbf{30.67}$^{***}$                  & -17.15\\
 \bottomrule
 \end{tabular*}
 \end{table}
@@ -270,10 +270,7 @@ How the two systems behave on the number of staves per test page $N$ provides an
 
 
 \section{Conclusion}
-We have presented the first full-page OMR system for handwritten jazz lead sheets, comparing a detect-and-concatenate baseline with two curriculum learning approaches that progressively train the model on inputs of increasing length.
-The masking curriculum with full experience replay ($r=1.00$) outperforms the baseline on all evaluation metrics, with the most pronounced improvements in LER (32.35\% to 23.15\%) and Chord SER (47.82\% to 30.67\%). Along with the detailed analysis in the discussion section, this suggest that page-level training is beneficial for structural and chord symbol transcription.
-
-The replay experiments show that retaining more prior-stage data during curriculum training leads to stronger full-page recognition performance, suggesting that the amount and diversity of training examples play an important role in improving prediction accuracy. The proposed chord-specific metrics, Root SER and Chord SER, also provide a useful way to evaluate chord-symbol transcription, revealing harmonic recognition improvements that are not fully captured by aggregate edit-distance metrics.
+We have presented the first full-page OMR system for handwritten jazz lead sheets, comparing a detect-and-concatenate baseline with two curriculum learning approaches that progressively train the model on inputs of increasing length. The masking curriculum with full experience replay ($r=1.00$) outperforms the baseline on all evaluation metrics, with the most pronounced improvements in LER and Chord SER. Along with the detailed analysis in the discussion section, this suggest that page-level training is beneficial for chord symbol transcription with a stronger improvements on lead sheet with higher number staves. The replay experiments show that retaining more prior-stage data during curriculum training leads to stronger full-page recognition performance, suggesting that the amount and diversity of training examples play an important role in improving prediction accuracy. The proposed chord-specific metrics, Root SER and Chord SER, also provide a useful insight to evaluate chord-symbol transcription, revealing harmonic recognition improvements that are not fully captured by aggregate edit-distance metrics.
 
 As noted in ~\ref{sec:data cleaning}, the annotation errors introduced in the data collection process cannot be fully overlooked. Correcting transcription errors from annotation inconsistencies is an important direction for future work. More broadly, data scarcity remains the primary bottleneck: the Jazzmus dataset contains only 293 handwritten pages, limiting both training diversity and evaluation reliability. A natural next step is to construct a larger corpus by re-engraving standards from the Real Book with Humdrum annotations and collecting corresponding handwritten copies, which would provide both greater scale and cleaner ground truth.
 Existing kern-encoded jazz corpora such as the Charlie Parker Omnibook transcriptions used in~\cite{baker_idiomaticism_2016} could serve as a starting point for building such a resource.
