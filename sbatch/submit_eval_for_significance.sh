@@ -2,6 +2,7 @@
 #SBATCH -J eval-sig
 #SBATCH -p ice-gpu
 #SBATCH --gres=gpu:1
+#SBATCH --exclude=atl1-1-01-005-17-0,atl1-1-01-005-19-0
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH -t 8:00:00
@@ -27,13 +28,12 @@ echo "--- torch CUDA check ---"
 python -c "import torch; print('torch', torch.__version__, 'cuda_runtime', torch.version.cuda); print('cuda available:', torch.cuda.is_available()); print('device count:', torch.cuda.device_count()); print('device 0:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NONE')"
 
 # Pipeline (all in one script):
-#   1. inference on 4 r=100 candidates → pick best as "r100"
-#   2. inference on baseline (YOLO + system-level SMT + concat)
-#   3. inference on r0, r025, r05 full-page checkpoints
-#   4. write per-page wide CSV
-#   5. paired Wilcoxon + Holm correction → markdown table
+#   1. inference on baseline (YOLO + system-level SMT + concat)
+#   2. inference on r0, r025, r05, r100 full-page checkpoints
+#   3. write per-page wide CSV
+#   4. paired Wilcoxon + Holm correction → markdown table
 
-echo "=== eval_for_significance: 7 inference passes + paired Wilcoxon ==="
+echo "=== eval_for_significance: 4 fullpage + 1 baseline inference passes + paired Wilcoxon ==="
 python eval_for_significance.py
 
 echo "--- nvidia-smi (post-run) ---"
