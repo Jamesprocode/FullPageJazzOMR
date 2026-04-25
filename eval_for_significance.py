@@ -72,7 +72,7 @@ from baseline.inference import FullPageInference
 BASELINE_YOLO   = Path("/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt")
 BASELINE_SMT    = Path("/home/hice1/jwang3180/scratch/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best/smt_pre_syn_medium.ckpt")
 
-TEST_SPLIT_FILE = Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_pagecrop/splits/test_0.txt")
+TEST_SPLIT_FILE = Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_fullpage/splits/test_0.txt")
 DATA_BASE_DIR   = Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data")
 
 CHECKPOINTS = {
@@ -140,8 +140,8 @@ def per_page_record(pred_full, gt_full):
         "kern_cer":  kern_cer,
         "kern_ser":  kern_ser,
         "kern_ler":  kern_ler,
-        "chord_ser": chord_m.get("ser_no_dots", float("nan")),
-        "root_ser":  chord_m.get("root_ser",   float("nan")),
+        "chord_ser": chord_m.get("chord_ser_no_dots", float("nan")),
+        "root_ser":  chord_m.get("root_ser",          float("nan")),
     }
 
 
@@ -297,7 +297,21 @@ def run_all_inference(num_workers):
 
 def write_wide_csv(all_records, out_csv):
     page_sets = [set(r.keys()) for r in all_records.values()]
+    print("\n--- per-model page-key sample (first 3) ---")
+    for name, recs in all_records.items():
+        keys = sorted(recs.keys())
+        print(f"  {name:<10} ({len(keys)} pages): {keys[:3]} ...")
     pages = sorted(set.intersection(*page_sets))
+    print(f"  intersection: {len(pages)} pages")
+    if not pages:
+        # show set diffs to make the mismatch obvious
+        names = list(all_records.keys())
+        for i, a in enumerate(names):
+            for b in names[i+1:]:
+                only_a = sorted(page_sets[i] - page_sets[names.index(b)])[:3]
+                only_b = sorted(page_sets[names.index(b)] - page_sets[i])[:3]
+                print(f"  in {a} not {b}: {only_a}")
+                print(f"  in {b} not {a}: {only_b}")
     dropped = max(len(s) for s in page_sets) - len(pages)
     if dropped:
         print(f"NOTE: dropping {dropped} pages not common to all models")
