@@ -147,6 +147,23 @@ def per_page_record(pred_full, gt_full):
 
 # ── baseline pipeline ────────────────────────────────────────────────────────
 
+def _resolve_split_path(raw: str, base_dir: Path) -> Path:
+    """Mirror FullPageDataset._resolve so baseline reads the same files
+    even when the split path has a leading dir (e.g. `data/...`) that
+    needs to be stripped."""
+    p = Path(raw)
+    if p.exists():
+        return p
+    candidate = base_dir / p
+    if candidate.exists():
+        return candidate
+    if len(p.parts) > 1:
+        stripped = base_dir / Path(*p.parts[1:])
+        if stripped.exists():
+            return stripped
+    return candidate
+
+
 def baseline_records():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     with open(TEST_SPLIT_FILE) as f:
@@ -155,8 +172,8 @@ def baseline_records():
             parts = line.strip().split()
             if len(parts) >= 2:
                 pairs.append((
-                    os.path.join(DATA_BASE_DIR, parts[0]),
-                    os.path.join(DATA_BASE_DIR, parts[1]),
+                    str(_resolve_split_path(parts[0], DATA_BASE_DIR)),
+                    str(_resolve_split_path(parts[1], DATA_BASE_DIR)),
                 ))
     print(f"  loaded {len(pairs)} test pairs")
     print(f"  loading SMT: {BASELINE_SMT}")
@@ -253,6 +270,8 @@ def _summary(recs):
 
 
 def _print_means(name, recs):
+    if not recs:
+        sys.exit(f"ERROR: {name} produced 0 records — check split paths / inference errors above")
     m = _summary(recs)
     print(f"  {name}: {len(recs)} pages, mean CER={m['cer']:.2f}  SER={m['ser']:.2f}  "
           f"LER={m['ler']:.2f}  KCER={m['kern_cer']:.2f}  ChSER={m['chord_ser']:.2f}")
