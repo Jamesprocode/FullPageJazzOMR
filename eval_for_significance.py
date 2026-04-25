@@ -79,20 +79,8 @@ CHECKPOINTS = {
     "r0":   Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/pagecrop/pagecrop_fold0_best.ckpt"),
     "r025": Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay/pagecrop_fold0_best.ckpt"),
     "r05":  Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_50percent/pagecrop_fold0_best.ckpt"),
-    # r100 is selected from R100_CANDIDATES below — whichever has lowest aggregate
-    # SER on the test set. The picked checkpoint becomes the "r100" column.
+    "r100": Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-best-best.ckpt"),
 }
-
-# Candidate r=100 checkpoints. We run inference on all of them, compare, and
-# keep only the best one as the final r100 entry. Selection criterion: lowest
-# mean overall SER across pages (matches the paper's headline metric).
-R100_CANDIDATES = [
-    # pagecrop_fold0_best.ckpt was already evaluated in a prior run and ruled out.
-    Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-v1.ckpt"),
-    Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-v2.ckpt"),
-    Path("/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmus_weights/replay_100percent/pagecrop_fold0_best-v2-bachsize1.ckpt"),
-]
-R100_SELECTION_METRIC = "ser"   # one of METRIC_KEYS — lower is better
 
 FULLPAGE_DATA_PATH = "/home/hice1/jwang3180/scratch/Fullpage Jazzmus/Jazzmuss_Data/jazzmus_fullpage"
 FULLPAGE_FOLD      = 0
@@ -217,9 +205,13 @@ def fullpage_records(checkpoint_path, num_workers):
     model.freeze()
     model.eval()
 
-    img_paths = getattr(test_set, "img_paths", None)
-    page_names = ([Path(p).stem for p in img_paths] if img_paths
-                  else [f"page_{i}" for i in range(len(test_set))])
+    samples = getattr(test_set, "samples", None)
+    if samples:
+        page_names = [Path(s[0]).stem for s in samples]
+    else:
+        img_paths = getattr(test_set, "img_paths", None)
+        page_names = ([Path(p).stem for p in img_paths] if img_paths
+                      else [f"page_{i}" for i in range(len(test_set))])
 
     loader = DataLoader(
         test_set, batch_size=1, num_workers=num_workers,
@@ -266,40 +258,6 @@ def _print_means(name, recs):
           f"LER={m['ler']:.2f}  KCER={m['kern_cer']:.2f}  ChSER={m['chord_ser']:.2f}")
 
 
-def select_best_r100(num_workers):
-    """Run inference on all R100_CANDIDATES, return (winner_path, winner_records)."""
-    print("=" * 60)
-    print(f"R=100 candidate selection (criterion: lowest mean {R100_SELECTION_METRIC})")
-    print("=" * 60)
-    valid = [p for p in R100_CANDIDATES if p.exists()]
-    for p in R100_CANDIDATES:
-        if not p.exists():
-            print(f"  [MISSING] {p}")
-    if not valid:
-        sys.exit("no r=100 candidates found")
-
-    candidate_results = []
-    for path in valid:
-        print(f"\n--- candidate: {path.name} ---")
-        recs = fullpage_records(str(path), num_workers)
-        means = _summary(recs)
-        candidate_results.append((path, recs, means))
-        _print_means(path.name, recs)
-
-    print("\n" + "-" * 60)
-    print(f"R=100 candidate comparison (sorted by {R100_SELECTION_METRIC}):")
-    print(f"  {'candidate':<53} {'CER':>7} {'SER':>7} {'LER':>7} {'ChSER':>8}")
-    candidate_results.sort(key=lambda t: t[2][R100_SELECTION_METRIC])
-    for path, _, means in candidate_results:
-        print(f"  {path.name:<53} {means['cer']:>6.2f}% {means['ser']:>6.2f}% "
-              f"{means['ler']:>6.2f}% {means['chord_ser']:>7.2f}%")
-    winner_path, winner_recs, winner_means = candidate_results[0]
-    print(f"\n>>> r100 winner: {winner_path.name} "
-          f"(mean {R100_SELECTION_METRIC}={winner_means[R100_SELECTION_METRIC]:.2f}%)")
-    print("=" * 60 + "\n")
-    return winner_path, winner_recs
-
-
 def run_all_inference(num_workers):
     print("=" * 60)
     print("Models to evaluate:")
@@ -310,16 +268,11 @@ def run_all_inference(num_workers):
         print(f"  {name:<10} -> {path}  [{'OK' if ok else 'MISSING'}]")
         if ok:
             valid_ckpts.append((name, path))
-    print(f"  r100 candidates: {len(R100_CANDIDATES)} (best chosen by mean {R100_SELECTION_METRIC})")
     print("=" * 60 + "\n")
 
     all_records = {}
 
-    # 1) Pick the best r=100 first so the user immediately sees which won.
-    winner_path, winner_recs = select_best_r100(num_workers)
-    all_records["r100"] = winner_recs
-
-    # 2) Baseline (YOLO + system-level SMT + concat)
+    # 1) Baseline (YOLO + system-level SMT + concat)
     print("=== baseline (YOLO + system-level SMT + concat) ===")
     for required, name in [(BASELINE_YOLO, "YOLO weights"),
                             (BASELINE_SMT, "SMT ckpt"),
@@ -331,7 +284,7 @@ def run_all_inference(num_workers):
     _print_means("baseline", recs)
     print()
 
-    # 3) Other masking ratios (r0, r025, r05)
+    # 2) Full-page masking ratios (r0, r025, r05, r100)
     for name, path in valid_ckpts:
         print(f"=== {name} ===")
         recs = fullpage_records(str(path), num_workers)
@@ -339,9 +292,6 @@ def run_all_inference(num_workers):
         _print_means(name, recs)
         print()
 
-    print("=" * 60)
-    print(f"r100 winner used in CSV: {winner_path}")
-    print("=" * 60 + "\n")
     return all_records
 
 
