@@ -6,34 +6,87 @@
   year         = {2016},
 }
 
+
 @article{calvo-zaragoza_understanding_2021,
-  author       = {Calvo-Zaragoza, Jorge and Hajič Jr, Jan and Pacha, Alexander},
-  title        = {Understanding Optical Music Recognition},
-  journal      = {ACM Computing Surveys},
-  volume       = {53},
-  number       = {4},
-  pages        = {1--35},
-  year         = {2021},
-  doi          = {10.1145/3397499},
-  url          = {https://doi.org/10.1145/3397499}
+author = {Calvo-Zaragoza, Jorge and Jr., Jan Haji\v{c} and Pacha, Alexander},
+title = {Understanding Optical Music Recognition},
+year = {2020},
+issue_date = {July 2021},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {53},
+number = {4},
+issn = {0360-0300},
+doi = {10.1145/3397499},
+abstract = {For over 50 years, researchers have been trying to teach computers to read music notation, referred to as Optical Music Recognition (OMR). However, this field is still difficult to access for new researchers, especially those without a significant musical background: Few introductory materials are available, and, furthermore, the field has struggled with defining itself and building a shared terminology. In this work, we address these shortcomings by (1) providing a robust definition of OMR and its relationship to related fields, (2) analyzing how OMR inverts the music encoding process to recover the musical notation and the musical semantics from documents, and (3) proposing a taxonomy of OMR, with most notably a novel taxonomy of applications. Additionally, we discuss how deep learning affects modern OMR research, as opposed to the traditional pipeline. Based on this work, the reader should be able to attain a basic understanding of OMR: its objectives, its inherent structure, its relationship to other fields, the state of the art, and the research opportunities it affords.},
+journal = {ACM Comput. Surv.},
+month = jul,
+articleno = {77},
+numpages = {35},
+keywords = {music scores, music notation, Optical music recognition}
+}
+
+@Article{pacha2018baseline,
+AUTHOR = {Pacha, Alexander and Hajič, Jan and Calvo-Zaragoza, Jorge},
+TITLE = {A Baseline for General Music Object Detection with Deep Learning},
+JOURNAL = {Applied Sciences},
+VOLUME = {8},
+YEAR = {2018},
+NUMBER = {9},
+ARTICLE-NUMBER = {1488},
+URL = {https://www.mdpi.com/2076-3417/8/9/1488},
+ISSN = {2076-3417},
+DOI = {10.3390/app8091488}
 }
 
 
-@misc{jung_unified_2025,
-	title = {Unified Cross-modal Translation of Score Images, Symbolic Music, and Performance Audio},
-	url = {http://arxiv.org/abs/2505.12863},
-	doi = {10.48550/arXiv.2505.12863},
-	abstract = {Music exists in various modalities, such as score images, symbolic scores, {MIDI}, and audio. Translations between each modality are established as core tasks of music information retrieval, such as automatic music transcription (audio-to-{MIDI}) and optical music recognition (score image to symbolic score). However, most past work on multimodal translation trains specialized models on individual translation tasks. In this paper, we propose a unified approach, where we train a general-purpose model on many translation tasks simultaneously. Two key factors make this unified approach viable: a new large-scale dataset and the tokenization of each modality. Firstly, we propose a new dataset that consists of more than 1,300 hours of paired audio-score image data collected from {YouTube} videos, which is an order of magnitude larger than any existing music modal translation datasets. Secondly, our unified tokenization framework discretizes score images, audio, {MIDI}, and {MusicXML} into a sequence of tokens, enabling a single encoder-decoder Transformer to tackle multiple cross-modal translation as one coherent sequence-to-sequence task. Experimental results confirm that our unified multitask model improves upon single-task baselines in several key areas, notably reducing the symbol error rate for optical music recognition from 24.58\% to a state-of-the-art 13.67\%, while similarly substantial improvements are observed across the other translation tasks. Notably, our approach achieves the first successful score-image-conditioned audio generation, marking a significant breakthrough in cross-modal music generation.},
-	number = {{arXiv}:2505.12863},
-	publisher = {{arXiv}},
-	author = {Jung, Jongmin and Kim, Dongmin and Lee, Sihun and Cho, Seola and Soh, Hyungjoon and Bukey, Irmak and Donahue, Chris and Jeong, Dasaem},
-	urldate = {2025-08-25},
-	date = {2025-05-19},
-	eprinttype = {arxiv},
-	eprint = {2505.12863 [cs]},
-	keywords = {Computer Science - Sound, Electrical Engineering and Systems Science - Audio and Speech Processing, Computer Science - Artificial Intelligence, Computer Science - Computer Vision and Pattern Recognition},
-	file = {Full Text PDF:/Users/jameswang/Zotero/storage/3MPE84K2/Jung et al. - 2025 - Unified Cross-modal Translation of Score Images, S.pdf:application/pdf;Snapshot:/Users/jameswang/Zotero/storage/6WPKWCUX/2505.html:text/html},
+
+
+
+@article{rebelo2010optical,
+author = {Rebelo, A. and Capela, G. and Cardoso, Jaime S.},
+title = {Optical recognition of music symbols: A comparative study},
+year = {2010},
+issue_date = {March 2010},
+publisher = {Springer-Verlag},
+address = {Berlin, Heidelberg},
+volume = {13},
+number = {1},
+issn = {1433-2833},
+doi = {10.1007/s10032-009-0100-1},
+journal = {International Journal on Document Analysis and Recognition (IJDAR)},
+month = mar,
+pages = {19–31},
+numpages = {13},
 }
+
+@inproceedings{baro2016compound,
+  author={Baró, Arnau and Riba, Pau and Fornés, Alicia},
+  booktitle={2016 15th International Conference on Frontiers in Handwriting Recognition (ICFHR)}, 
+  title={Towards the Recognition of Compound Music Notes in Handwritten Music Scores}, 
+  year={2016},
+  volume={},
+  number={},
+  pages={465-470},
+  doi={10.1109/ICFHR.2016.0092}}
+
+@article{paul2022ensemble,
+author = {Paul, Ashis and Pramanik, Rishav and Malakar, Samir and Sarkar, Ram},
+title = {An ensemble of deep transfer learning models for handwritten music symbol recognition},
+year = {2022},
+issue_date = {Jul 2022},
+journal = {Neural Computing and Applications},
+publisher = {Springer-Verlag},
+address = {Berlin, Heidelberg},
+volume = {34},
+number = {13},
+issn = {0941-0643},
+doi = {10.1007/s00521-021-06629-9},
+month = {jul},
+pages = {10409–10427},
+numpages = {19},
+}
+
 
 @misc{jamshidi_machine_2024,
 	title = {Machine Learning Techniques in Automatic Music Transcription: A Systematic Survey},
@@ -56,15 +109,12 @@
 @article{calvo-zaragoza_handwritten_2019,
 	title = {Handwritten Music Recognition for Mensural notation with convolutional recurrent neural networks},
 	volume = {128},
+    year = {2019},
 	issn = {01678655},
-	url = {https://linkinghub.elsevier.com/retrieve/pii/S0167865519302338},
 	doi = {10.1016/j.patrec.2019.08.021},
-	abstract = {Optical Music Recognition is the technology that allows computers to read music notation, which is also referred to as Handwritten Music Recognition when it is applied over handwritten notation. This technology aims at eﬃciently transcribing written music into a representation that can be further processed by a computer. This is of special interest to transcribe the large amount of music written in early notations, such as the Mensural notation, since they represent largely unexplored heritage for the musicological community. Traditional approaches to this problem are based on complex strategies with many explicit rules that only work for one particular type of manuscript. Machine learning approaches oﬀer the promise of generalizable solutions, based on learning from just labelled examples. However, previous research has not achieved suﬃciently acceptable results for handwritten Mensural notation. In this work we propose the use of deep neural networks, namely convolutional recurrent neural networks, which have proved eﬀective in other similar domains such as handwritten text recognition. Our experimental results achieve, for the ﬁrst time, recognition results that can be considered eﬀective for transcribing handwritten Mensural notation, decreasing the symbol-level error rate of previous approaches from 25.7 \% to 7.0 \%.},
 	pages = {115--121},
-	journaltitle = {Pattern Recognition Letters},
-	shortjournal = {Pattern Recognition Letters},
+	journal = {Pattern Recognition Letters},
 	author = {Calvo-Zaragoza, Jorge and Toselli, Alejandro H. and Vidal, Enrique},
-	urldate = {2025-08-25},
 	date = {2019-12},
 	langid = {english},
 	file = {Calvo-Zaragoza et al. - 2019 - Handwritten Music Recognition for Mensural notatio.pdf:/Users/jameswang/Zotero/storage/GHUG95RF/Calvo-Zaragoza et al. - 2019 - Handwritten Music Recognition for Mensural notatio.pdf:application/pdf},
@@ -89,16 +139,14 @@
 @article{baro_optical_2019,
 	title = {From Optical Music Recognition to Handwritten Music Recognition: A baseline},
 	volume = {123},
+    year = {2019},
 	issn = {01678655},
-	url = {https://linkinghub.elsevier.com/retrieve/pii/S0167865518303386},
 	doi = {10.1016/j.patrec.2019.02.029},
 	shorttitle = {From Optical Music Recognition to Handwritten Music Recognition},
 	abstract = {Optical Music Recognition ({OMR}) is the branch of document image analysis that aims to convert images of musical scores into a computer-readable format. Despite decades of research, the recognition of handwritten music scores, concretely the Western notation, is still an open problem, and the few existing works only focus on a speciﬁc stage of {OMR}. In this work, we propose a full Handwritten Music Recognition ({HMR}) system based on Convolutional Recurrent Neural Networks, data augmentation and transfer learning, that can serve as a baseline for the research community.},
 	pages = {1--8},
-	journaltitle = {Pattern Recognition Letters},
-	shortjournal = {Pattern Recognition Letters},
+	journal = {Pattern Recognition Letters},
 	author = {Baró, Arnau and Riba, Pau and Calvo-Zaragoza, Jorge and Fornés, Alicia},
-	urldate = {2025-08-25},
 	date = {2019-05},
 	langid = {english},
 	file = {Baró et al. - 2019 - From Optical Music Recognition to Handwritten Musi.pdf:/Users/jameswang/Zotero/storage/PGP2AUXT/Baró et al. - 2019 - From Optical Music Recognition to Handwritten Musi.pdf:application/pdf},
@@ -113,35 +161,34 @@
 }
 
 @inproceedings{rios-vila_sheet_2024,
-  author    = {R{\'i}os-Vila, Antonio and Calvo-Zaragoza, Jorge and Paquet, Thierry},
-  title     = {Sheet Music Transformer: End-To-End Optical Music Recognition Beyond Monophonic Transcription},
-  booktitle = {Document Analysis and Recognition -- ICDAR 2024},
-  series    = {Lecture Notes in Computer Science},
-  volume    = {14809},
-  editor    = {Barney Smith, Elaine H. and Liwicki, Marcus and Peng, Liang},
-  publisher = {Springer},
-  address   = {Cham},
-  year      = {2024},
-  doi       = {10.1007/978-3-031-70552-6_2},
-  url       = {https://doi.org/10.1007/978-3-031-70552-6_2}
+author = {R\'{\i}os-Vila, Antonio and Calvo-Zaragoza, Jorge and Paquet, Thierry},
+title = {Sheet Music Transformer: End-To-End Optical Music Recognition Beyond Monophonic Transcription},
+year = {2024},
+isbn = {978-3-031-70551-9},
+publisher = {Springer-Verlag},
+address = {Berlin, Heidelberg},
+doi = {10.1007/978-3-031-70552-6_2},
+booktitle = {Document Analysis and Recognition - ICDAR 2024: 18th International Conference, Athens, Greece, August 30–September 4, 2024, Proceedings, Part VI},
+pages = {20–37},
+numpages = {18},
+keywords = {Optical Music Recognition, SMT, Transformer, Polyphonic music transcription, GrandStaff, Quartets},
+location = {Athens, Greece}
 }
-
 
 @inproceedings{mayer_practical_2024,
-  author    = {Mayer, Ji{\v{r}}{\'i} and Straka, Milan and Haji{\v{c}} Jr, Jan and Pecina, Pavel},
-  title     = {Practical End-to-End Optical Music Recognition for Pianoform Music},
-  booktitle = {Document Analysis and Recognition -- ICDAR 2024: 18th International Conference, Athens, Greece, August 30 -- September 4, 2024, Proceedings, Part VI},
-  series    = {Lecture Notes in Computer Science},
-  volume    = {14809},
-  pages     = {55--73},
-  publisher = {Springer},
-  address   = {Cham},
-  year      = {2024},
-  doi       = {10.1007/978-3-031-70552-6_4},
-  url       = {https://doi.org/10.1007/978-3-031-70552-6_4}
+author = {Mayer, Ji\v{r}\'{\i} and Straka, Milan and Haji\v{c}, Jan and Pecina, Pavel},
+title = {Practical End-to-End Optical Music Recognition for&nbsp;Pianoform Music},
+year = {2024},
+isbn = {978-3-031-70551-9},
+publisher = {Springer-Verlag},
+address = {Berlin, Heidelberg},
+doi = {10.1007/978-3-031-70552-6_4},
+booktitle = {Document Analysis and Recognition - ICDAR 2024: 18th International Conference, Athens, Greece, August 30–September 4, 2024, Proceedings, Part VI},
+pages = {55–73},
+numpages = {19},
+keywords = {Optical Music Recognition, Evaluation, Datasets},
+location = {Athens, Greece}
 }
-
-
 
 
 @inproceedings{martinez-sevilla_sheet_2025,
@@ -206,37 +253,135 @@
   doi          = {10.1023/A:1002485918032}
 }
 
+
 @inproceedings{devega2022omr,
-  author       = {De Vega, F. F. and Alvarado, J. and Cortez, J. V.},
-  title        = {Optical Music Recognition and Deep Learning: An Application to 4-Part Harmony},
-  booktitle    = {2022 IEEE Congress on Evolutionary Computation (CEC)},
-  pages        = {1--7},
-  year         = {2022},
-  publisher    = {IEEE},
-  doi          = {10.1109/CEC55065.2022.9870260}
+author = {De Vega, Francisco Fern\'{a}ndez and Alvarado, Jorge and Cortez, Juan Villegas},
+title = {Optical Music recognition and Deep Learning: An application to 4-part harmony},
+year = {2022},
+publisher = {IEEE Press},
+doi = {10.1109/CEC55065.2022.9870357},
+booktitle = {2022 IEEE Congress on Evolutionary Computation (CEC)},
+pages = {01–07},
+numpages = {7},
+location = {Padua, Italy}
 }
-@article{hartelt2022medieval,
-  author    = {Hartelt, Alexander and Puppe, Frank},
-  title     = {Optical medieval music recognition using background knowledge},
-  journal   = {Algorithms},
-  volume    = {15},
-  number    = {7},
-  pages     = {221},
-  year      = {2022},
-  doi       = {10.3390/a15070221}
+
+
+@Article{hartelt2022medieval,
+AUTHOR = {Hartelt, Alexander and Puppe, Frank},
+TITLE = {Optical Medieval Music Recognition Using Background Knowledge},
+JOURNAL = {Algorithms},
+VOLUME = {15},
+YEAR = {2022},
+NUMBER = {7},
+ARTICLE-NUMBER = {221},
+URL = {https://www.mdpi.com/1999-4893/15/7/221},
+ISSN = {1999-4893},
+DOI = {10.3390/a15070221}
 }
+
+
+
+@Article{calvo-zaragoza2018end,
+AUTHOR = {Calvo-Zaragoza, Jorge and Rizo, David},
+TITLE = {End-to-End Neural Optical Music Recognition of Monophonic Scores},
+JOURNAL = {Applied Sciences},
+VOLUME = {8},
+YEAR = {2018},
+NUMBER = {4},
+ARTICLE-NUMBER = {606},
+URL = {https://www.mdpi.com/2076-3417/8/4/606},
+ISSN = {2076-3417},
+DOI = {10.3390/app8040606}
+}
+
+
+
+
+
+@inproceedings{ren2016faster,
+author = {Ren, Shaoqing and He, Kaiming and Girshick, Ross and Sun, Jian},
+title = {Faster R-CNN: towards real-time object detection with region proposal networks},
+year = {2015},
+publisher = {MIT Press},
+address = {Cambridge, MA, USA},
+booktitle = {Proceedings of the 29th International Conference on Neural Information Processing Systems - Volume 1},
+pages = {91–99},
+numpages = {9},
+location = {Montreal, Canada},
+series = {NIPS'15}
+}
+
+@inproceedings{,
+  author       = {Wei Liu and Dragomir Anguelov and Dumitru Erhan and Christian Szegedy and Scott Reed and Cheng-Yang Fu and Alexander C. Berg},
+  title        = {{SSD}: Single Shot MultiBox Detector},
+  booktitle    = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  year         = {2016},
+  pages        = {21--37}
+}
+
+@InProceedings{liu2016ssd,
+author="Liu, Wei and Anguelov, Dragomir and Erhan, Dumitru and Szegedy, Christian and Reed, Scott and Fu, Cheng-Yang and Berg, Alexander C.",
+editor="Leibe, Bastian and Matas, Jiri and Sebe, Nicu and Welling, Max",
+title="SSD: Single Shot MultiBox Detector",
+booktitle="Computer Vision -- ECCV 2016",
+year="2016",
+publisher="Springer International Publishing",
+address="Cham",
+pages="21--37",
+isbn="978-3-319-46448-0"
+}
+
+
+@inproceedings{yu2016unitbox,
+author = {Yu, Jiahui and Jiang, Yuning and Wang, Zhangyang and Cao, Zhimin and Huang, Thomas},
+title = {UnitBox: An Advanced Object Detection Network},
+year = {2016},
+isbn = {9781450336031},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+doi = {10.1145/2964284.2967274},
+booktitle = {Proceedings of the 24th ACM International Conference on Multimedia},
+pages = {516–520},
+numpages = {5},
+keywords = {IoU loss, bounding box prediction, object detection},
+location = {Amsterdam, The Netherlands},
+series = {MM '16}
+}
+
+@article{RiosVila2026FullPageOMR,
+  author  = {Antonio R{\'i}os-Vila and Jorge Calvo-Zaragoza and David Rizo and Thierry Paquet},
+  title   = {End-to-End Full-Page Optical Music Recognition for Pianoform Sheet Music},
+  journal = {International Journal of Computer Vision},
+  year    = {2026},
+  volume  = {134},
+  number  = {2},
+  pages   = {49},
+  doi     = {10.1007/s11263-025-02654-6}
+}
+
+
+@ARTICLE{lin2017focal,
+  author={Lin, Tsung-Yi and Goyal, Priya and Girshick, Ross and He, Kaiming and Dollár, Piotr},
+  journal={IEEE Transactions on Pattern Analysis and Machine Intelligence}, 
+  title={Focal Loss for Dense Object Detection}, 
+  year={2020},
+  volume={42},
+  number={2},
+  pages={318-327},
+  doi={10.1109/TPAMI.2018.2858826}}
 
 
 @article{alfaro-contreras2023homophonic,
-  author    = {Alfaro-Contreras, M. and Iñesta, J. M. and Calvo-Zaragoza, J.},
-  title     = {Optical music recognition for homophonic scores with neural networks and synthetic music generation},
-  journal   = {International Journal of Multimedia Information Retrieval},
-  volume    = {12},
-  number    = {1},
-  pages     = {12},            
-  year      = {2023},
-  month     = {May 26},
-  doi       = {10.1007/s13735-023-00278-5}
+  author  = {Alfaro-Contreras, Mar{\'i}a and I{\~n}esta, Jos{\'e} M. and Calvo-Zaragoza, Jorge},
+  title   = {Optical Music Recognition for Homophonic Scores with Neural Networks and Synthetic Music Generation},
+  journal = {International Journal of Multimedia Information Retrieval},
+  year    = {2023},
+  volume  = {12},
+  number  = {1},
+  pages   = {12},
+  doi     = {10.1007/s13735-023-00278-5},
+  url     = {https://doi.org/10.1007/s13735-023-00278-5}
 }
 
 @article{rios-vila2023pianoform,
@@ -251,9 +396,53 @@
 }
 
 @inproceedings{dvorak2024staff,
-  author    = {V. Dvor{\'a}k and J. Haji{\v{c}} Jr. and J. Mayer},
+  author    = {V. Dvor{\'a}k, J. Hajič, Jr. and J. Mayer},
   title     = {Staff Layout Analysis Using the YOLO Platform},
   booktitle = {Proceedings of the 6th International Workshop on Reading Music Systems},
   year      = {2024},
   pages     = {18}
+}
+
+@phdthesis{bainbridge1997extensible,
+  author       = {David Bainbridge},
+  title        = {Extensible Optical Music Recognition},
+  school       = {University of Canterbury},
+  address      = {Christchurch, New Zealand},
+  year         = {1997},
+  type         = {Doctor of Philosophy thesis},
+  url          = {http://hdl.handle.net/10092/9420},
+  doi          = {10.26021/1334}
+}
+
+@inbook{blostein1992critical,
+  author       = {Blostein, Dorothea and Baird, Henry S.},
+  title        = {A Critical Survey of Music Image Analysis},
+  booktitle    = {Structured Document Image Analysis},
+  editor       = {Baird, Henry S. and Bunke, Horst and Yamamoto, Kazuhiko},
+  publisher    = {Springer Berlin Heidelberg},
+  address      = {Berlin, Heidelberg},
+  year         = {1992},
+  pages        = {405--434},
+  doi          = {10.1007/978-3-642-77281-8_19},
+  isbn         = {978-3-642-77281-8},
+  url          = {https://doi.org/10.1007/978-3-642-77281-8_19}
+}
+
+
+@inproceedings{redmon2016yolo,
+  author       = {Joseph Redmon and Santosh Divvala and Ross Girshick and Ali Farhadi},
+  title        = {You Only Look Once: Unified, Real-Time Object Detection},
+  booktitle    = {Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year         = {2016},
+  pages        = {779--788},
+  doi          = {10.1109/CVPR.2016.91}
+}
+
+@book{huron1999music,
+  author    = {Huron, David},
+  title     = {Music Research Using Humdrum: A User's Guide},
+  year      = {1999},
+  publisher = {Center for Computer Assisted Research in the Humanities},
+  address   = {Stanford, CA},
+  url       = {https://www.humdrum.org/guide/}
 }

@@ -18,7 +18,14 @@ import re
 from collections import defaultdict
 
 import fire
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+
+# Match ISMIR template font (Times Roman, ptm in ismir.sty)
+mpl.rcParams["font.family"]      = "serif"
+mpl.rcParams["font.serif"]       = ["Times New Roman", "Times", "STIX", "DejaVu Serif"]
+mpl.rcParams["mathtext.fontset"] = "stix"
+mpl.rcParams["axes.unicode_minus"] = False
 
 
 METRIC_LABELS = {
@@ -91,7 +98,7 @@ def main(
                     color=color, label=f"{display}, {metric_label}",
                     **METRIC_STYLE[metric])
 
-    ax.set_xlabel("Staves per page $n$")
+    ax.set_xlabel("$N$ staves per page", labelpad=10)
     ax.set_ylabel("Error rate (\\%)")
     ax.set_xticks(ns)
     ax.set_xticklabels(xlabels)
@@ -101,11 +108,11 @@ def main(
         ax.spines[spine].set_visible(False)
     ax.legend(loc="best", fontsize=8, frameon=False, ncol=2)
 
-    ymin, ymax = ax.get_ylim()
+    # page-count annotations sit between the tick labels and the x-axis title
     for n in ns:
-        ax.text(n, ymin - (ymax - ymin) * 0.08,
-                f"{page_counts[n]}p", ha="center", va="top",
-                fontsize=7, color="#666666")
+        ax.annotate(f"{page_counts[n]}p", xy=(n, 0), xycoords=("data", "axes fraction"),
+                    xytext=(0, -18), textcoords="offset points",
+                    ha="center", va="top", fontsize=7, color="#666666")
 
     fig.tight_layout()
     out_path = Path(out)

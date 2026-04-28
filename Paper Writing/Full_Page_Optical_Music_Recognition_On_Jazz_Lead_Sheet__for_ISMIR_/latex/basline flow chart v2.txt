@@ -7,13 +7,13 @@ body{margin:0;background:#fafafa;font-family:Helvetica,Arial,sans-serif;color:#2
 </style></head><body>
 <h2 style="font-weight:500;margin:0">Horizontal compact baseline (5 nodes + legend)</h2>
 <div class="card">
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="520" height="124" viewBox="0 0 700 124" font-family="Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="520" height="54" viewBox="0 24 700 72" font-family="Times, 'Times New Roman', serif">
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#222"/></marker></defs>
-<rect x="20" y="32" width="90" height="56" rx="5" fill="#ffffff" stroke="#222" stroke-width="1.1"/>
+<rect x="10" y="32" width="110" height="56" rx="5" fill="#ffffff" stroke="#222" stroke-width="1.1"/>
 <text x="65" y="58" text-anchor="middle" font-size="11" fill="#222">Full-page</text>
 <text x="65" y="72" text-anchor="middle" font-size="11" fill="#222">lead sheet</text>
-<rect x="198" y="32" width="100" height="56" rx="5" fill="#EEF2F7" stroke="#222" stroke-width="1.1"/>
-<text x="247" y="58" text-anchor="middle" font-size="11" fill="#222">System detect</text>
+<rect x="192" y="32" width="110" height="56" rx="5" fill="#EEF2F7" stroke="#222" stroke-width="1.1"/>
+<text x="247" y="58" text-anchor="middle" font-size="11" fill="#222">Staff detect</text>
 <text x="247" y="72" text-anchor="middle" font-size="11" fill="#222">(YOLO)</text>
 <rect x="388" y="32" width="110" height="56" rx="5" fill="#CFE2F3" stroke="#222" stroke-width="1.1"/>
 <text x="443" y="58" text-anchor="middle" font-size="11" fill="#222">Staff-level</text>
@@ -21,16 +21,15 @@ body{margin:0;background:#fafafa;font-family:Helvetica,Arial,sans-serif;color:#2
 <rect x="578" y="32" width="110" height="56" rx="5" fill="#EEF2F7" stroke="#222" stroke-width="1.1"/>
 <text x="633" y="58" text-anchor="middle" font-size="11" fill="#222">Full-page</text>
 <text x="633" y="72" text-anchor="middle" font-size="11" fill="#222">Evaluation</text>
-<line x1="115" y1="60" x2="194" y2="60" stroke="#222" stroke-width="1.1" marker-end="url(#arrow)"/>
-<text x="153" y="43" text-anchor="middle" font-size="10" font-style="italic" fill="#444">pre-processing</text>
-<text x="153" y="54" text-anchor="middle" font-size="10" font-style="italic" fill="#444">(rotate, resize)</text>
-<line x1="305" y1="60" x2="384" y2="60" stroke="#222" stroke-width="1.1" marker-end="url(#arrow)"/>
-<text x="342" y="43" text-anchor="middle" font-size="10" font-style="italic" fill="#444">post-processing</text>
-<text x="342" y="54" text-anchor="middle" font-size="10" font-style="italic" fill="#444">(expand box etc.)</text>
-<line x1="502" y1="60" x2="574" y2="60" stroke="#222" stroke-width="1.1" marker-end="url(#arrow)"/>
-<text x="538" y="43" text-anchor="middle" font-size="10" font-style="italic" fill="#444">concatenate</text>
-<text x="538" y="54" text-anchor="middle" font-size="10" font-style="italic" fill="#444">predictions</text>
-</g>
+<line x1="120" y1="60" x2="188" y2="60" stroke="#222" stroke-width="1.1" marker-end="url(#arrow)"/>
+<text x="154" y="43" text-anchor="middle" font-size="10" font-style="italic" fill="#444">pre-processing</text>
+<text x="154" y="54" text-anchor="middle" font-size="10" font-style="italic" fill="#444">(rotate, resize)</text>
+<line x1="302" y1="60" x2="384" y2="60" stroke="#222" stroke-width="1.1" marker-end="url(#arrow)"/>
+<text x="343" y="43" text-anchor="middle" font-size="10" font-style="italic" fill="#444">post-processing</text>
+<text x="343" y="54" text-anchor="middle" font-size="10" font-style="italic" fill="#444">(expand box etc.)</text>
+<line x1="498" y1="60" x2="574" y2="60" stroke="#222" stroke-width="1.1" marker-end="url(#arrow)"/>
+<text x="536" y="43" text-anchor="middle" font-size="10" font-style="italic" fill="#444">concatenate</text>
+<text x="536" y="54" text-anchor="middle" font-size="10" font-style="italic" fill="#444">predictions</text>
 </svg></div>
 <div class="info">SVG 886 × 124 px. Five nodes, italic edge labels above arrows, legend below.</div>
 </body></html>
