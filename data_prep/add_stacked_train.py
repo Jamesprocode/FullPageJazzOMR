@@ -35,7 +35,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from prepare_stacked_data import (
+from FullPageJazzOMR.data_prep.prepare_stacked_data import (
     build_stacked_gt,
     stack_images,
     precompute_compatible,

@@ -41,7 +41,7 @@ from jazzmus.dataset.smt_dataset import batch_preparation_img2seq
 from jazzmus.dataset.smt_dataset_utils import check_and_retrieveVocabulary
 
 # Import shared callback + hparam holder from train.py
-from train import DynamicCurriculumAdvancer, train_hparams
+from FullPageJazzOMR.train.train import DynamicCurriculumAdvancer, train_hparams
 
 
 # ── gin-configurable paths for the stacking experiment ────────────────────────
